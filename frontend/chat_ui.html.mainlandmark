@@ -1,0 +1,1400 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lexi Chat</title>
+    <link rel="icon" type="image/x-icon" href="/frontend/pages/lexi_favicon.ico">
+
+    <!-- Zentrale CSS-Dateien -->
+    <link rel="stylesheet" href="/frontend/css/global.css">
+    <link rel="stylesheet" href="/frontend/css/navigation_improved.css">
+    <link rel="stylesheet" href="/frontend/css/breadcrumbs.css">
+    <link rel="stylesheet" href="/frontend/css/search.css">
+    <link rel="stylesheet" href="/frontend/css/modal-auth.css">
+
+    <style>
+        /* CSS Variables werden von global.css bereitgestellt */
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: var(--card-bg);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 120px);
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-hover) 100%);
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .logo {
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            backdrop-filter: blur(10px);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: white;
+            margin: 0;
+        }
+
+        .header .subtitle {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.8);
+            margin-top: 2px;
+        }
+
+        .settings-btn {
+            background: rgba(255, 255, 255, 0.15);
+            border: none;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .settings-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: rotate(90deg) scale(1.1);
+        }
+
+        .settings-icon {
+            width: 24px;
+            height: 24px;
+            fill: white;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            background: linear-gradient(to bottom, var(--bg-color), var(--card-bg));
+        }
+
+        .chat-messages::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .chat-messages::-webkit-scrollbar-track {
+            background: var(--input-bg);
+            border-radius: 4px;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: var(--primary-color);
+            border-radius: 4px;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb:hover {
+            background: var(--primary-hover);
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            max-width: 75%;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(15px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            align-self: flex-end;
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+        }
+
+        .message-content {
+            padding: 14px 18px;
+            border-radius: 16px;
+            word-wrap: break-word;
+            position: relative;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.assistant .message-content {
+            background: var(--chat-bot-bg);
+            color: var(--text-color);
+            border-bottom-left-radius: 4px;
+            border: 1px solid var(--border-color);
+        }
+
+        .timestamp {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 6px;
+            padding: 0 8px;
+        }
+
+        .feedback-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            padding: 0 8px;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+
+        .feedback-buttons:hover {
+            opacity: 1;
+        }
+
+        .feedback-btn {
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.2s;
+            color: var(--text-color);
+        }
+
+        .feedback-btn:hover {
+            background: var(--section-bg);
+            transform: scale(1.1);
+            border-color: var(--primary-color);
+        }
+
+        .feedback-btn.active {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        .correction-input-container {
+            margin-top: 10px;
+            display: none;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        .correction-input-container.show {
+            display: block;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .correction-input {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-color);
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .correction-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(124, 77, 255, 0.1);
+        }
+
+        .correction-submit-btn {
+            margin-top: 8px;
+            padding: 8px 18px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .correction-submit-btn:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(124, 77, 255, 0.3);
+        }
+
+        .input-area {
+            padding: 20px 30px;
+            border-top: 1px solid var(--border-color);
+            background: var(--card-bg);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .input-field {
+            flex: 1;
+            padding: 14px 20px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            color: var(--text-color);
+            font-size: 15px;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .input-field:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(124, 77, 255, 0.1);
+        }
+
+        .send-btn {
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+            color: white;
+            border: none;
+            border-radius: 24px;
+            padding: 14px 28px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(124, 77, 255, 0.3);
+        }
+
+        .send-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(124, 77, 255, 0.4);
+        }
+
+        .send-btn:active {
+            transform: translateY(0);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .typing-indicator {
+            display: none;
+            align-self: flex-start;
+            padding: 16px 20px;
+            background: var(--chat-bot-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            border-bottom-left-radius: 4px;
+            max-width: 75%;
+        }
+
+        .typing-indicator.show {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--primary-color);
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+            }
+            30% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .stats {
+            padding: 12px 30px;
+            background: var(--section-bg);
+            border-top: 1px solid var(--border-color);
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-align: center;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .stat-icon {
+            color: var(--primary-color);
+        }
+
+        /* Welcome Message */
+        .welcome-message {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-secondary);
+        }
+
+        .welcome-message h2 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+
+        .welcome-message p {
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        /* Heartbeat Status Component */
+        .heartbeat-status {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--card-bg);
+            border: 2px solid var(--border-color);
+            border-radius: 16px;
+            padding: 12px 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+            max-width: 280px;
+        }
+
+        .heartbeat-status:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(124, 77, 255, 0.4);
+            border-color: var(--primary-color);
+        }
+
+        .heartbeat-icon {
+            font-size: 20px;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: rgba(124, 77, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .heartbeat-status.idle .heartbeat-icon {
+            animation: heartbeatPulse 2s ease-in-out infinite;
+            background: rgba(124, 77, 255, 0.3);
+        }
+
+        @keyframes heartbeatPulse {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(124, 77, 255, 0.7);
+            }
+            50% {
+                transform: scale(1.1);
+                box-shadow: 0 0 0 10px rgba(124, 77, 255, 0);
+            }
+        }
+
+        .heartbeat-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            flex: 1;
+        }
+
+        .heartbeat-mode {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-color);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .heartbeat-mode .mode-badge {
+            font-size: 9px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: var(--success-color);
+            color: white;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .heartbeat-status.idle .mode-badge {
+            background: var(--primary-color);
+            animation: badgePulse 2s ease-in-out infinite;
+        }
+
+        @keyframes badgePulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.6;
+            }
+        }
+
+        .heartbeat-description {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        /* Heartbeat Details Panel (shown on hover) */
+        .heartbeat-details {
+            position: fixed;
+            bottom: 90px;
+            right: 30px;
+            background: var(--card-bg);
+            border: 2px solid var(--primary-color);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+            z-index: 999;
+            min-width: 280px;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(10px);
+            transition: all 0.3s ease;
+        }
+
+        .heartbeat-status:hover + .heartbeat-details,
+        .heartbeat-details:hover {
+            opacity: 1;
+            pointer-events: all;
+            transform: translateY(0);
+        }
+
+        .heartbeat-details h3 {
+            font-size: 14px;
+            color: var(--primary-color);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .heartbeat-stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 12px;
+        }
+
+        .heartbeat-stat:last-child {
+            border-bottom: none;
+        }
+
+        .heartbeat-stat-label {
+            color: var(--text-secondary);
+        }
+
+        .heartbeat-stat-value {
+            color: var(--text-color);
+            font-weight: 600;
+        }
+
+        .heartbeat-stat-value.highlight {
+            color: var(--primary-color);
+        }
+
+        /* Trigger Button in Details Panel */
+        .heartbeat-trigger-btn {
+            margin-top: 12px;
+            width: 100%;
+            padding: 10px 16px;
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-hover) 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .heartbeat-trigger-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(124, 77, 255, 0.4);
+        }
+
+        .heartbeat-trigger-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .heartbeat-trigger-btn.loading {
+            background: linear-gradient(135deg, #666 0%, #888 100%);
+        }
+
+        .heartbeat-trigger-btn .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .heartbeat-success {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid var(--success-color);
+            border-radius: 6px;
+            font-size: 11px;
+            color: var(--success-color);
+            text-align: center;
+            animation: slideIn 0.3s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <div class="nav-wrapper">
+<nav class="nav-bar" role="navigation" aria-label="Hauptnavigation">
+
+                <!-- Brand -->
+                <a href="/" class="nav-brand" aria-label="Zurück zur Startseite">
+                    <span class="logo">🤖</span>
+                    <span>Lexi AI</span>
+                </a>
+
+                <!-- Mobile Hamburger Menu -->
+                <button class="hamburger-menu" id="hamburgerMenu" aria-label="Menü öffnen">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+
+                <!-- Navigation Links -->
+                <div class="nav-links" id="navLinks">
+                    <!-- Primäre Funktionen -->
+                    <div class="nav-group primary">
+                        <a href="/frontend/chat_ui.html" class="nav-link primary">
+                            <span>💬</span>
+                            <span>Chat</span>
+                        </a>
+                        <a href="/frontend/chat_ui.html" class="nav-link primary">
+                            <span>🎤</span>
+                            <span>Voice</span>
+                        </a>
+                    </div>
+
+                    <!-- Intelligenz Dropdown -->
+                    <div class="nav-dropdown">
+                        <button class="nav-dropdown-toggle" aria-haspopup="true" aria-expanded="false">
+                            <span>🧠</span>
+                            <span>Intelligenz</span>
+                            <span class="dropdown-icon">▼</span>
+                        </button>
+                        <div class="nav-dropdown-menu" role="menu">
+                            <a href="/frontend/pages/memory_management_ui.html" class="nav-dropdown-item" role="menuitem">
+                                <span>🧠</span>
+                                <span>Memory</span>
+                            </a>
+                            <a href="/frontend/pages/patterns_ui.html" class="nav-dropdown-item" role="menuitem">
+                                <span>🔍</span>
+                                <span>Patterns</span>
+                            </a>
+                            <a href="/frontend/pages/knowledge_gaps_ui.html" class="nav-dropdown-item" role="menuitem">
+                                <span>💡</span>
+                                <span>Wissenslücken</span>
+                            </a>
+                            <a href="/frontend/pages/goals_ui.html" class="nav-dropdown-item" role="menuitem">
+                                <span>🎯</span>
+                                <span>Ziele</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Verwaltung -->
+                    <div class="nav-group secondary">
+                        <a href="/frontend/pages/metrics_dashboard.html" class="nav-link" title="Dashboard">
+                            <span>📊</span>
+                        </a>
+                        <a href="/frontend/pages/config_ui.html" class="nav-link" title="Einstellungen">
+                            <span>⚙️</span>
+                        </a>
+                    </div>
+
+                    <!-- User Authentication Section -->
+                    <div class="user-info-section" style="margin-left: auto; display: flex; align-items: center; gap: 12px;">
+                        <!-- Auth Buttons (Anonymous Users) -->
+                        <div class="auth-buttons" id="authButtonsAnonymous" style="display: none;">
+                            <button class="auth-button-guest" onclick="continueAsGuest()">
+                                Als Gast fortfahren
+                            </button>
+                            <button class="auth-button-login" onclick="openAuthModal('login')">
+                                Anmelden
+                            </button>
+                        </div>
+
+                        <!-- User Menu (Authenticated Users) -->
+                        <div class="user-menu-dropdown" id="userMenuDropdown" style="display: none;">
+                            <button class="user-menu-button" id="userMenuButton">
+                                <div class="user-menu-avatar" id="userAvatar">?</div>
+                                <span id="userMenuName">User</span>
+                                <span style="margin-left: 4px;">▼</span>
+                            </button>
+                            <div class="user-menu-content" id="userMenuContent">
+                                <div class="user-menu-header">
+                                    <div style="font-weight: 500;" id="userMenuHeaderName">User</div>
+                                    <div class="user-menu-email" id="userMenuEmail">email@example.com</div>
+                                </div>
+                                <div class="user-menu-items">
+                                    <button class="user-menu-item" onclick="window.location.href='/frontend/pages/config_ui.html'">
+                                        ⚙️ Einstellungen
+                                    </button>
+                                    <button class="user-menu-item" onclick="window.location.href='/frontend/pages/memory_management_ui.html'">
+                                        🧠 Meine Memories
+                                    </button>
+                                    <div class="user-menu-divider"></div>
+                                    <button class="user-menu-item danger" onclick="handleLogout()">
+                                        🚪 Logout
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            
+            </nav>
+    </div>
+
+    <!-- Breadcrumbs -->
+    <div id="breadcrumbsContainer"></div>
+
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <div class="logo">💬</div>
+                <div>
+                    <h1>Lexi Chat</h1>
+                    <div class="subtitle">Intelligente Konversation mit Feedback-System</div>
+                </div>
+            </div>
+            <button class="settings-btn" onclick="window.location.href='/frontend/pages/config_ui.html'" title="Einstellungen">
+                <svg class="settings-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="chat-messages" id="chatMessages">
+            <div class="welcome-message">
+                <h2>👋 Willkommen bei Lexi!</h2>
+                <p>Ich bin dein intelligenter Assistent mit adaptivem Gedächtnis.<br>
+                Stelle mir eine Frage oder beginne eine Unterhaltung!</p>
+            </div>
+        </div>
+
+        <div class="typing-indicator" id="typingIndicator">
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+        </div>
+
+        <div class="input-area">
+            <input
+                type="text"
+                class="input-field"
+                id="messageInput"
+                placeholder="Schreibe eine Nachricht..."
+                autocomplete="off"
+            />
+            <button class="send-btn" id="sendBtn">Senden</button>
+        </div>
+
+        <div class="stats" id="stats">
+            <div class="stat-item">
+                <span class="stat-icon">💬</span>
+                <span>Nachrichten: <strong>0</strong></span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-icon">⭐</span>
+                <span>Feedback: <strong>0</strong></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Heartbeat Status Indicator -->
+    <div class="heartbeat-status" id="heartbeatStatus">
+        <div class="heartbeat-icon">🫀</div>
+        <div class="heartbeat-info">
+            <div class="heartbeat-mode">
+                <span id="heartbeatModeText">System</span>
+                <span class="mode-badge" id="heartbeatModeBadge">ACTIVE</span>
+            </div>
+            <div class="heartbeat-description" id="heartbeatDescription">Bereit</div>
+        </div>
+    </div>
+
+    <!-- Heartbeat Details Panel (shown on hover) -->
+    <div class="heartbeat-details" id="heartbeatDetails">
+        <h3>🧠 Memory Intelligence</h3>
+        <div class="heartbeat-stat">
+            <span class="heartbeat-stat-label">Memories gesamt</span>
+            <span class="heartbeat-stat-value" id="statTotalMemories">-</span>
+        </div>
+        <div class="heartbeat-stat">
+            <span class="heartbeat-stat-label">Konsolidiert</span>
+            <span class="heartbeat-stat-value highlight" id="statConsolidated">-</span>
+        </div>
+        <div class="heartbeat-stat">
+            <span class="heartbeat-stat-label">Synthetisiert</span>
+            <span class="heartbeat-stat-value highlight" id="statSynthesized">-</span>
+        </div>
+        <div class="heartbeat-stat">
+            <span class="heartbeat-stat-label">Gelöscht</span>
+            <span class="heartbeat-stat-value" id="statDeleted">-</span>
+        </div>
+        <div class="heartbeat-stat">
+            <span class="heartbeat-stat-label">Letzter Run</span>
+            <span class="heartbeat-stat-value" id="statLastRun">-</span>
+        </div>
+
+        <button class="heartbeat-trigger-btn" id="triggerHeartbeat">
+            <span>⚡</span>
+            <span id="triggerBtnText">Jetzt Konsolidieren</span>
+        </button>
+        <div class="heartbeat-success" id="triggerSuccess" style="display: none;"></div>
+    </div>
+
+    <script>
+        const API_BASE_URL = window.location.origin;
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const typingIndicator = document.getElementById('typingIndicator');
+        const stats = document.getElementById('stats');
+
+        let messageCount = 0;
+        let feedbackCount = 0;
+
+        // Remove welcome message on first interaction
+        let isFirstMessage = true;
+
+        // Send message on Enter
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // Send message on button click
+        sendBtn.addEventListener('click', sendMessage);
+
+        function buildUserHeaders(headers = {}) {
+            if (window.userManager) {
+                return userManager.injectUserIdHeader(headers);
+            }
+            return { ...headers };
+        }
+
+        async function userFetch(url, options = {}) {
+            if (window.userManager) {
+                return userManager.authenticatedFetch(url, options);
+            }
+            return fetch(url, options);
+        }
+
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            // Remove welcome message on first message
+            if (isFirstMessage) {
+                const welcomeMsg = document.querySelector('.welcome-message');
+                if (welcomeMsg) welcomeMsg.remove();
+                isFirstMessage = false;
+            }
+
+            // Add user message to chat
+            addMessage('user', message);
+            messageInput.value = '';
+            messageCount++;
+            updateStats();
+
+            // Show typing indicator
+            typingIndicator.classList.add('show');
+            sendBtn.disabled = true;
+
+            try {
+                // Call chat API
+                const response = await userFetch(`${API_BASE_URL}/ui/chat`, {
+                    method: 'POST',
+                    headers: buildUserHeaders({
+                        'Content-Type': 'application/json'
+                    }),
+                    body: JSON.stringify({
+                        message: message
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+
+                const data = await response.json();
+
+                // Hide typing indicator
+                typingIndicator.classList.remove('show');
+
+                // Add assistant response with feedback buttons
+                const turnId = data.turn_id || generateTurnId();
+                addMessage('assistant', data.response || data.message, turnId);
+
+            } catch (error) {
+                console.error('Error:', error);
+                typingIndicator.classList.remove('show');
+                addMessage('assistant', 'Entschuldigung, es gab einen Fehler. Bitte versuche es erneut.');
+            } finally {
+                sendBtn.disabled = false;
+                messageInput.focus();
+            }
+        }
+
+        function addMessage(type, content, turnId = null) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = content;
+
+            const timestamp = document.createElement('div');
+            timestamp.className = 'timestamp';
+            timestamp.textContent = new Date().toLocaleTimeString('de-DE', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            messageDiv.appendChild(contentDiv);
+            messageDiv.appendChild(timestamp);
+
+            // Add feedback buttons for assistant messages
+            if (type === 'assistant' && turnId) {
+                const feedbackDiv = document.createElement('div');
+                feedbackDiv.className = 'feedback-buttons';
+
+                const thumbsUpBtn = createFeedbackButton('👍', 'thumbs-up', turnId, messageDiv);
+                const thumbsDownBtn = createFeedbackButton('👎', 'thumbs-down', turnId, messageDiv);
+                const correctBtn = createFeedbackButton('✏️', 'correct', turnId, messageDiv);
+
+                feedbackDiv.appendChild(thumbsUpBtn);
+                feedbackDiv.appendChild(thumbsDownBtn);
+                feedbackDiv.appendChild(correctBtn);
+                messageDiv.appendChild(feedbackDiv);
+            }
+
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function createFeedbackButton(emoji, type, turnId, messageDiv) {
+            const btn = document.createElement('button');
+            btn.className = 'feedback-btn';
+            btn.textContent = emoji;
+
+            if (type === 'thumbs-up') {
+                btn.title = 'Gute Antwort';
+            } else if (type === 'thumbs-down') {
+                btn.title = 'Schlechte Antwort';
+            } else if (type === 'correct') {
+                btn.title = 'Korrigieren';
+            }
+
+            btn.addEventListener('click', async () => {
+                if (btn.classList.contains('active')) return;
+
+                if (type === 'correct') {
+                    showCorrectionInput(turnId, messageDiv, btn);
+                } else {
+                    await sendFeedback(type, turnId);
+                    btn.classList.add('active');
+                    feedbackCount++;
+                    updateStats();
+                }
+            });
+
+            return btn;
+        }
+
+        async function sendFeedback(type, turnId) {
+            try {
+                const userId = window.userManager ? userManager.getUserId() : null;
+                const payload = {
+                    turn_id: turnId,
+                    ...(userId ? { user_id: userId } : {})
+                };
+                const response = await userFetch(`${API_BASE_URL}/v1/feedback/${type}`, {
+                    method: 'POST',
+                    headers: buildUserHeaders({
+                        'Content-Type': 'application/json'
+                    }),
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    console.log(`Feedback ${type} sent for turn ${turnId}`);
+                } else {
+                    console.error('Failed to send feedback');
+                }
+            } catch (error) {
+                console.error('Error sending feedback:', error);
+            }
+        }
+
+        function showCorrectionInput(turnId, messageDiv, correctBtn) {
+            if (messageDiv.querySelector('.correction-input-container')) {
+                return;
+            }
+
+            const correctionContainer = document.createElement('div');
+            correctionContainer.className = 'correction-input-container show';
+
+            const correctionTextarea = document.createElement('textarea');
+            correctionTextarea.className = 'correction-input';
+            correctionTextarea.placeholder = 'Gib hier die korrekte Antwort ein...';
+
+            const submitBtn = document.createElement('button');
+            submitBtn.className = 'correction-submit-btn';
+            submitBtn.textContent = 'Korrektur senden';
+
+            submitBtn.addEventListener('click', async () => {
+                const correctionText = correctionTextarea.value.trim();
+                if (!correctionText) {
+                    alert('Bitte gib eine Korrektur ein');
+                    return;
+                }
+
+                try {
+                    const userId = window.userManager ? userManager.getUserId() : null;
+                    const payload = {
+                        turn_id: turnId,
+                        correction_text: correctionText,
+                        ...(userId ? { user_id: userId } : {})
+                    };
+                    const response = await userFetch(`${API_BASE_URL}/v1/feedback/correction`, {
+                        method: 'POST',
+                        headers: buildUserHeaders({
+                            'Content-Type': 'application/json'
+                        }),
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        console.log(`Correction sent for turn ${turnId}`);
+                        correctBtn.classList.add('active');
+                        correctionContainer.remove();
+                        feedbackCount++;
+                        updateStats();
+
+                        const successMsg = document.createElement('div');
+                        successMsg.textContent = '✅ Korrektur gespeichert';
+                        successMsg.style.cssText = 'font-size: 12px; color: var(--success-color); margin-top: 5px; padding: 0 8px;';
+                        messageDiv.appendChild(successMsg);
+                        setTimeout(() => successMsg.remove(), 3000);
+                    } else {
+                        console.error('Failed to send correction');
+                        alert('Fehler beim Senden der Korrektur');
+                    }
+                } catch (error) {
+                    console.error('Error sending correction:', error);
+                    alert('Fehler beim Senden der Korrektur');
+                }
+            });
+
+            correctionContainer.appendChild(correctionTextarea);
+            correctionContainer.appendChild(submitBtn);
+            messageDiv.appendChild(correctionContainer);
+            correctionTextarea.focus();
+        }
+
+        function generateTurnId() {
+            return `turn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        }
+
+        function updateStats() {
+            stats.innerHTML = `
+                <div class="stat-item">
+                    <span class="stat-icon">💬</span>
+                    <span>Nachrichten: <strong>${messageCount}</strong></span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-icon">⭐</span>
+                    <span>Feedback: <strong>${feedbackCount}</strong></span>
+                </div>
+            `;
+        }
+
+        // Heartbeat Status Monitoring
+        const heartbeatStatus = document.getElementById('heartbeatStatus');
+        const heartbeatModeText = document.getElementById('heartbeatModeText');
+        const heartbeatModeBadge = document.getElementById('heartbeatModeBadge');
+        const heartbeatDescription = document.getElementById('heartbeatDescription');
+        const statTotalMemories = document.getElementById('statTotalMemories');
+        const statConsolidated = document.getElementById('statConsolidated');
+        const statSynthesized = document.getElementById('statSynthesized');
+        const statDeleted = document.getElementById('statDeleted');
+        const statLastRun = document.getElementById('statLastRun');
+
+        async function updateHeartbeatStatus() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/v1/debug/heartbeat/status`);
+                if (!response.ok) {
+                    console.warn('Failed to fetch heartbeat status');
+                    return;
+                }
+
+                const data = await response.json();
+                const heartbeat = data.heartbeat;
+
+                // Update mode badge and styling
+                const mode = heartbeat.mode || 'UNKNOWN';
+                heartbeatModeBadge.textContent = mode;
+
+                if (mode === 'IDLE') {
+                    heartbeatStatus.classList.add('idle');
+                    heartbeatModeText.textContent = 'Memory Intelligence';
+                    heartbeatDescription.textContent = 'Konsolidiert Erinnerungen...';
+                } else {
+                    heartbeatStatus.classList.remove('idle');
+                    heartbeatModeText.textContent = 'System';
+                    heartbeatDescription.textContent = 'Bereit';
+                }
+
+                // Update statistics
+                statTotalMemories.textContent = heartbeat.total_memories || 0;
+                statConsolidated.textContent = heartbeat.consolidated_count || 0;
+                statSynthesized.textContent = heartbeat.synthesized_count || 0;
+                statDeleted.textContent = heartbeat.deleted_count || 0;
+
+                // Format last run time
+                if (heartbeat.last_run) {
+                    const lastRun = new Date(heartbeat.last_run);
+                    const now = new Date();
+                    const diffMs = now - lastRun;
+                    const diffMins = Math.floor(diffMs / 60000);
+
+                    if (diffMins < 1) {
+                        statLastRun.textContent = 'Gerade eben';
+                    } else if (diffMins < 60) {
+                        statLastRun.textContent = `vor ${diffMins} Min`;
+                    } else {
+                        const diffHours = Math.floor(diffMins / 60);
+                        statLastRun.textContent = `vor ${diffHours}h`;
+                    }
+                } else {
+                    statLastRun.textContent = 'Noch nicht gelaufen';
+                }
+
+            } catch (error) {
+                console.error('Error updating heartbeat status:', error);
+            }
+        }
+
+        // Update heartbeat status every 10 seconds
+        updateHeartbeatStatus(); // Initial update
+        setInterval(updateHeartbeatStatus, 10000); // Update every 10s
+
+        // Trigger Heartbeat Button Handler
+        const triggerBtn = document.getElementById('triggerHeartbeat');
+        const triggerBtnText = document.getElementById('triggerBtnText');
+        const triggerSuccess = document.getElementById('triggerSuccess');
+
+        triggerBtn.addEventListener('click', async () => {
+            // Disable button and show loading
+            triggerBtn.disabled = true;
+            triggerBtn.classList.add('loading');
+            triggerBtnText.textContent = 'Konsolidiere...';
+
+            // Add spinner
+            const spinner = document.createElement('div');
+            spinner.className = 'spinner';
+            triggerBtn.insertBefore(spinner, triggerBtnText);
+
+            // Hide previous success message
+            triggerSuccess.style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/v1/debug/heartbeat/ui-trigger`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Trigger failed');
+                }
+
+                const data = await response.json();
+
+                // Show success message
+                triggerSuccess.style.display = 'block';
+                triggerSuccess.textContent = `✅ ${data.message} | ${data.stats.consolidated} konsolidiert, ${data.stats.synthesized} synthetisiert`;
+
+                // Update stats immediately
+                await updateHeartbeatStatus();
+
+                // Hide success message after 5 seconds
+                setTimeout(() => {
+                    triggerSuccess.style.display = 'none';
+                }, 5000);
+
+            } catch (error) {
+                console.error('Error triggering heartbeat:', error);
+                triggerSuccess.style.display = 'block';
+                triggerSuccess.style.borderColor = 'var(--error-color)';
+                triggerSuccess.style.color = 'var(--error-color)';
+                triggerSuccess.textContent = '❌ Fehler beim Starten der Konsolidierung';
+
+                setTimeout(() => {
+                    triggerSuccess.style.display = 'none';
+                }, 3000);
+            } finally {
+                // Re-enable button
+                triggerBtn.disabled = false;
+                triggerBtn.classList.remove('loading');
+                triggerBtnText.textContent = 'Jetzt Konsolidieren';
+                spinner.remove();
+            }
+        });
+
+        // Focus input on load
+        window.addEventListener('load', () => {
+            messageInput.focus();
+        });
+    </script>
+
+    <!-- Verbesserte Navigation Script -->
+    <script defer src="/frontend/js/navigation_improved.js"></script>
+    <script defer src="/frontend/js/auth-manager.js"></script>
+    <script defer src="/frontend/js/user-manager.js"></script>
+    <script defer src="/frontend/js/auth-integration.js"></script>
+    <script defer src="/frontend/js/breadcrumbs.js"></script>
+    <script defer src="/frontend/js/search.js"></script>
+    <script>
+        // Initialize AuthManager and UserManager
+        window.authManager = new AuthManager();
+        window.userManager = new UserManager(authManager);
+
+        // Update auth UI based on login state
+        function updateAuthUI() {
+            const authButtonsAnonymous = document.getElementById('authButtonsAnonymous');
+            const userMenuDropdown = document.getElementById('userMenuDropdown');
+            const userAvatar = document.getElementById('userAvatar');
+            const userMenuName = document.getElementById('userMenuName');
+            const userMenuHeaderName = document.getElementById('userMenuHeaderName');
+            const userMenuEmail = document.getElementById('userMenuEmail');
+
+            if (authManager.isLoggedIn()) {
+                // Show user menu for logged-in users
+                if (authButtonsAnonymous) authButtonsAnonymous.style.display = 'none';
+                if (userMenuDropdown) userMenuDropdown.style.display = 'block';
+
+                const user = authManager.getUserData();
+                if (user && userAvatar && userMenuName && userMenuHeaderName && userMenuEmail) {
+                    const initial = user.email ? user.email.charAt(0).toUpperCase() : '?';
+                    userAvatar.textContent = initial;
+                    userMenuName.textContent = user.display_name || user.email.split('@')[0];
+                    userMenuHeaderName.textContent = user.display_name || user.email.split('@')[0];
+                    userMenuEmail.textContent = user.email;
+                }
+            } else {
+                // Show auth buttons for anonymous users
+                if (authButtonsAnonymous) authButtonsAnonymous.style.display = 'flex';
+                if (userMenuDropdown) userMenuDropdown.style.display = 'none';
+            }
+        }
+
+        // Handle logout
+        async function handleLogout() {
+            if (confirm('Möchtest du dich wirklich abmelden?')) {
+                await authManager.logout();
+                updateAuthUI();
+            }
+        }
+
+        // Continue as guest (dismiss auth prompt)
+        function continueAsGuest() {
+            closeAuthModal();
+            console.log('Continuing as guest user');
+        }
+
+        // Listen for auth state changes
+        window.addEventListener('auth-changed', () => {
+            updateAuthUI();
+        });
+
+        // Initialize user and handle auth state
+        userManager.init().then(() => {
+            console.log('✅ User initialized:', userManager.getUserId());
+            updateAuthUI();
+        }).catch(error => {
+            console.error('❌ UserManager initialization failed:', error);
+        });
+    </script>
+
+    <!-- Auth Modal -->
+    <div class="auth-modal" id="authModal">
+        <div class="auth-modal-content">
+            <button class="auth-modal-close" onclick="closeAuthModal()">×</button>
+
+            <!-- Tabs -->
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-tab="login" onclick="switchAuthTab('login')">
+                    Login
+                </button>
+                <button class="auth-tab" data-tab="register" onclick="switchAuthTab('register')">
+                    Registrieren
+                </button>
+            </div>
+
+            <!-- Login Form -->
+            <form class="auth-form active" id="loginForm" onsubmit="handleLogin(event)">
+                <div class="auth-form-error" id="loginError"></div>
+
+                <div class="auth-form-group">
+                    <label class="auth-form-label">E-Mail</label>
+                    <input type="email" class="auth-form-input" id="loginEmail" placeholder="deine@email.de" required>
+                </div>
+
+                <div class="auth-form-group">
+                    <label class="auth-form-label">Passwort</label>
+                    <input type="password" class="auth-form-input" id="loginPassword" placeholder="••••••••" required>
+                </div>
+
+                <button type="submit" class="auth-form-button" id="loginSubmitBtn">
+                    Anmelden
+                </button>
+
+                <div class="auth-divider">oder</div>
+
+                <button type="button" class="auth-guest-button" onclick="continueAsGuest()">
+                    Als Gast fortfahren
+                </button>
+            </form>
+
+            <!-- Register Form -->
+            <form class="auth-form" id="registerForm" onsubmit="handleRegister(event)">
+                <div class="auth-form-error" id="registerError"></div>
+                <div class="auth-form-success" id="registerSuccess"></div>
+
+                <div class="auth-form-group">
+                    <label class="auth-form-label">E-Mail</label>
+                    <input type="email" class="auth-form-input" id="registerEmail" placeholder="deine@email.de" required>
+                </div>
+
+                <div class="auth-form-group">
+                    <label class="auth-form-label">Passwort</label>
+                    <input type="password" class="auth-form-input" id="registerPassword" placeholder="Mindestens 8 Zeichen" required minlength="8">
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                        Min. 8 Zeichen, 1 Großbuchstabe, 1 Zahl
+                    </div>
+                </div>
+
+                <div class="auth-form-group">
+                    <label class="auth-form-label">Passwort bestätigen</label>
+                    <input type="password" class="auth-form-input" id="registerPasswordConfirm" placeholder="Passwort wiederholen" required minlength="8">
+                </div>
+
+                <button type="submit" class="auth-form-button" id="registerSubmitBtn">
+                    Registrieren
+                </button>
+            </form>
+        </div>
+    </div>
+
+</body>
+</html>

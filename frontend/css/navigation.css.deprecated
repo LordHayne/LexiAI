@@ -1,0 +1,107 @@
+/*
+ * Lexi AI - Navigation Styles
+ * Zentrale Navigation-Bar für alle Seiten
+ */
+
+.nav-wrapper {
+    max-width: 1200px;
+    margin: 0 auto 20px auto;
+}
+
+.nav-bar {
+    background: var(--card-bg);
+    padding: 15px 25px;
+    border-radius: var(--radius-lg);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--text-color);
+    text-decoration: none;
+    font-size: 18px;
+    font-weight: 600;
+    transition: var(--transition-normal);
+}
+
+.nav-brand:hover {
+    color: var(--primary-color);
+}
+
+.nav-brand .logo {
+    font-size: 24px;
+}
+
+.nav-links {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.nav-link {
+    color: var(--text-color);
+    text-decoration: none;
+    padding: 8px 16px;
+    border-radius: var(--radius-md);
+    transition: all var(--transition-normal);
+    border: 1px solid transparent;
+    min-width: 100px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.nav-link:hover {
+    background: var(--section-bg);
+    border-color: var(--primary-color);
+    transform: translateY(-1px);
+}
+
+.nav-link.active {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.nav-link:active {
+    transform: translateY(0);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .nav-bar {
+        flex-direction: column;
+        gap: 15px;
+        padding: 20px;
+    }
+
+    .nav-links {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .nav-link {
+        flex: 1 1 auto;
+        min-width: 90px;
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 480px) {
+    .nav-link {
+        padding: 6px 12px;
+        font-size: 12px;
+        min-width: 80px;
+    }
+}

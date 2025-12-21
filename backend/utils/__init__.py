@@ -1,0 +1,1 @@
+from backend.utils.content_extraction import extract_content_from_response

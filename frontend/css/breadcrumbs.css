@@ -1,0 +1,96 @@
+/*
+ * Lexi AI - Breadcrumbs Navigation
+ */
+
+.breadcrumbs-wrapper {
+    max-width: 1200px;
+    margin: 0 auto 16px auto;
+}
+
+.breadcrumbs {
+    background: var(--section-bg);
+    padding: 10px 20px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+
+.breadcrumb-list {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 0;
+    padding: 0;
+}
+
+.breadcrumb-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.breadcrumb-link {
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: var(--transition-normal);
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+}
+
+.breadcrumb-link:hover {
+    color: var(--primary-color);
+    background: var(--input-bg);
+}
+
+.breadcrumb-item.active .breadcrumb-link {
+    color: var(--text-color);
+    font-weight: 600;
+    cursor: default;
+}
+
+.breadcrumb-item.active .breadcrumb-link:hover {
+    background: transparent;
+}
+
+.breadcrumb-separator {
+    color: var(--text-secondary);
+    opacity: 0.5;
+    font-size: 12px;
+}
+
+/* Icons */
+.breadcrumb-icon {
+    font-size: 14px;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .breadcrumbs {
+        padding: 8px 15px;
+    }
+
+    .breadcrumb-item {
+        font-size: 12px;
+    }
+
+    .breadcrumb-icon {
+        font-size: 12px;
+    }
+
+    /* Verstecke mittlere Items auf sehr kleinen Screens */
+    .breadcrumb-item.hide-mobile {
+        display: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .breadcrumbs-wrapper {
+        margin-bottom: 12px;
+    }
+
+    .breadcrumb-separator {
+        font-size: 10px;
+    }
+}

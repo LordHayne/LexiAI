@@ -1,0 +1,15 @@
+{
+  "audit_log_path": "",
+  "embedding_model": "nomic-embed-text",
+  "embedding_url": "http://localhost:11434",
+  "features": {
+    "memory_feedback": true,
+    "streaming": true
+  },
+  "force_recreate_collection": false,
+  "llm_model": "gemma3:12b",
+  "ollama_url": "http://localhost:11434",
+  "qdrant_host": "localhost",
+  "qdrant_port": 6333,
+  "system_prompt": ""
+}

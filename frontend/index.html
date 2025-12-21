@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lexi AI - Intelligent Memory System</title>
+    <link rel="icon" type="image/x-icon" href="/frontend/pages/lexi_favicon.ico">
+
+    <!-- Zentrale CSS-Dateien -->
+    <link rel="stylesheet" href="/frontend/css/global.css">
+    <link rel="stylesheet" href="/frontend/css/navigation_improved.css">
+    <link rel="stylesheet" href="/frontend/css/breadcrumbs.css">
+    <link rel="stylesheet" href="/frontend/css/search.css">
+    <link rel="stylesheet" href="/frontend/css/modal-auth.css">
+
+    <style>
+        .hero {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-hover) 100%);
+            padding: 60px 30px;
+            border-radius: var(--radius-xl);
+            margin-bottom: 40px;
+            box-shadow: var(--shadow-lg);
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-size: 48px;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 16px;
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        .hero-subtitle {
+            font-size: 20px;
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 32px;
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+            animation: fadeIn 1s ease-out;
+        }
+
+        .hero-btn {
+            padding: 16px 32px;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition-normal);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .hero-btn-primary {
+            background: white;
+            color: var(--primary-color);
+        }
+
+        .hero-btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(255, 255, 255, 0.3);
+        }
+
+        .hero-btn-secondary {
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            border: 2px solid white;
+        }
+
+        .hero-btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-3px);
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .feature-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 32px;
+            transition: all var(--transition-normal);
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+
+        .feature-card:hover {
+            border-color: var(--primary-color);
+            transform: translateY(-5px);
+            box-shadow: 0 12px 32px rgba(124, 77, 255, 0.2);
+        }
+
+        .feature-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            display: block;
+        }
+
+        .feature-title {
+            font-size: 22px;
+            font-weight: 600;
+            color: var(--text-color);
+            margin-bottom: 12px;
+        }
+
+        .feature-description {
+            color: var(--text-secondary);
+            line-height: 1.6;
+            font-size: 15px;
+        }
+
+        .status-section {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 32px;
+            margin-bottom: 40px;
+        }
+
+        .status-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .status-item {
+            background: var(--section-bg);
+            padding: 20px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+        }
+
+        .status-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: var(--primary-color);
+            margin-bottom: 8px;
+        }
+
+        .status-label {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--success-color);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 16px;
+        }
+
+        .quick-action-btn {
+            background: var(--section-bg);
+            border: 1px solid var(--border-color);
+            padding: 20px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all var(--transition-normal);
+            text-decoration: none;
+            color: var(--text-color);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .quick-action-btn:hover {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            transform: translateX(5px);
+        }
+
+        .quick-action-icon {
+            font-size: 32px;
+        }
+
+        .quick-action-text h3 {
+            margin-bottom: 4px;
+        }
+
+        .quick-action-text p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        footer {
+            text-align: center;
+            padding: 32px;
+            color: var(--text-secondary);
+            border-top: 1px solid var(--border-color);
+            margin-top: 60px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Skip Link für Accessibility -->
+    <a href="#main-content" class="skip-link">Zum Hauptinhalt springen</a>
+
+    <!-- Verbesserte Navigation -->
+    <div class="nav-wrapper">
+        <nav class="nav-bar" role="navigation" aria-label="Hauptnavigation">
+            <a href="/" class="nav-brand" aria-label="Zurück zur Startseite">
+                <span class="logo">🤖</span>
+                <span>Lexi AI</span>
+            </a>
+
+            <button class="hamburger-menu" id="hamburgerMenu" aria-label="Menü öffnen">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+
+            <div class="nav-links" id="navLinks">
+                <div class="nav-group primary">
+                    <a href="/frontend/chat_ui.html" class="nav-link primary">
+                        <span>💬</span>
+                        <span>Chat</span>
+                    </a>
+                </div>
+
+                <div class="nav-dropdown">
+                    <button class="nav-dropdown-toggle" aria-haspopup="true" aria-expanded="false">
+                        <span>🧠</span>
+                        <span>Intelligenz</span>
+                        <span class="dropdown-icon">▼</span>
+                    </button>
+                    <div class="nav-dropdown-menu" role="menu">
+                        <a href="/frontend/pages/memory_management_ui.html" class="nav-dropdown-item" role="menuitem">
+                            <span>🧠</span>
+                            <span>Memory</span>
+                        </a>
+                        <a href="/frontend/pages/patterns_ui.html" class="nav-dropdown-item" role="menuitem">
+                            <span>🔍</span>
+                            <span>Patterns</span>
+                        </a>
+                        <a href="/frontend/pages/knowledge_gaps_ui.html" class="nav-dropdown-item" role="menuitem">
+                            <span>💡</span>
+                            <span>Wissenslücken</span>
+                        </a>
+                        <a href="/frontend/pages/goals_ui.html" class="nav-dropdown-item" role="menuitem">
+                            <span>🎯</span>
+                            <span>Ziele</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="nav-group secondary">
+                    <a href="/frontend/pages/metrics_dashboard.html" class="nav-link" title="Dashboard">
+                        <span>📊</span>
+                    </a>
+                    <a href="/frontend/pages/config_ui.html" class="nav-link" title="Einstellungen">
+                        <span>⚙️</span>
+                    </a>
+                </div>
+
+                <!-- Auth Section -->
+                <div class="nav-group auth" style="margin-left: auto;">
+                    <!-- Auth Buttons (Anonymous Users) -->
+                    <div class="auth-buttons" id="authButtonsAnonymous" style="display: none;">
+                        <button class="auth-button-login" onclick="openAuthModal('login')" style="padding: 8px 16px; background: var(--primary-color); color: white; border: none; border-radius: var(--radius-md); cursor: pointer; font-size: 14px; font-weight: 500;">
+                            Anmelden
+                        </button>
+                    </div>
+
+                    <!-- User Menu (Authenticated Users) -->
+                    <div class="user-menu-dropdown" id="userMenuDropdown" style="display: none; position: relative;">
+                        <button class="user-menu-button" id="userMenuButton" style="display: flex; align-items: center; gap: 8px; background: var(--section-bg); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: var(--radius-md); cursor: pointer;">
+                            <div class="user-menu-avatar" id="userAvatar" style="width: 28px; height: 28px; border-radius: 50%; background: var(--primary-color); color: white; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px;">?</div>
+                            <span id="userMenuName" style="font-size: 14px; font-weight: 500;">User</span>
+                            <span style="margin-left: 4px; font-size: 10px;">▼</span>
+                        </button>
+                        <div class="user-menu-content" id="userMenuContent" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 8px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-md); min-width: 200px; box-shadow: var(--shadow-lg); z-index: 1000;">
+                            <div class="user-menu-header" style="padding: 16px; border-bottom: 1px solid var(--border-color);">
+                                <div style="font-weight: 500;" id="userMenuHeaderName">User</div>
+                                <div class="user-menu-email" id="userMenuEmail" style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">email@example.com</div>
+                            </div>
+                            <div class="user-menu-items">
+                                <button class="user-menu-item" onclick="window.location.href='/frontend/pages/config_ui.html'" style="width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; cursor: pointer; font-size: 14px; color: var(--text-color); display: block;">
+                                    ⚙️ Einstellungen
+                                </button>
+                                <button class="user-menu-item" onclick="handleLogout()" style="width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; cursor: pointer; font-size: 14px; color: var(--error-color); display: block; border-top: 1px solid var(--border-color);">
+                                    🚪 Abmelden
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </div>
+
+    <div class="container" id="main-content">
+        <!-- Hero Section -->
+        <div class="hero">
+            <h1>🤖 Willkommen bei Lexi AI</h1>
+            <p class="hero-subtitle">Dein intelligentes Gedächtnis mit ML-basierter Konsolidierung</p>
+            <div class="hero-buttons">
+                <a href="/frontend/chat_ui.html" class="hero-btn hero-btn-primary">
+                    <span>💬</span>
+                    <span>Chat starten</span>
+                </a>
+                <a href="/frontend/chat_ui.html" class="hero-btn hero-btn-secondary">
+                    <span>🎤</span>
+                    <span>Voicechat</span>
+                </a>
+                <a href="/docs" class="hero-btn hero-btn-secondary">
+                    <span>📚</span>
+                    <span>API Docs</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- System Status -->
+        <div class="status-section">
+            <h2 class="status-title">
+                <span class="status-indicator"></span>
+                <span>System Status</span>
+            </h2>
+            <div class="status-grid" id="statusGrid">
+                <div class="status-item">
+                    <div class="status-value" id="memoryCount">-</div>
+                    <div class="status-label">Gespeicherte Memories</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="activeGoals">-</div>
+                    <div class="status-label">Aktive Ziele</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="patternsDetected">-</div>
+                    <div class="status-label">Erkannte Patterns</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="systemUptime">-</div>
+                    <div class="status-label">System Uptime</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features Grid (Reduziert auf Top 3) -->
+        <h2 style="margin-bottom: 24px; font-size: 28px;">Kernfunktionen</h2>
+        <div class="features-grid">
+            <a href="/frontend/pages/memory_management_ui.html" class="feature-card">
+                <span class="feature-icon">🧠</span>
+                <h3 class="feature-title">Intelligentes Gedächtnis</h3>
+                <p class="feature-description">ML-basierte Konsolidierung und Synthetisierung von Erinnerungen mit automatischer Kategorisierung</p>
+            </a>
+
+            <a href="/frontend/pages/patterns_ui.html" class="feature-card">
+                <span class="feature-icon">🔍</span>
+                <h3 class="feature-title">Pattern Recognition</h3>
+                <p class="feature-description">Automatische Erkennung von Verhaltensmustern und wiederkehrenden Themen in Konversationen</p>
+            </a>
+
+            <a href="/frontend/chat_ui.html" class="feature-card">
+                <span class="feature-icon">💬</span>
+                <h3 class="feature-title">Kontextbasierter Chat</h3>
+                <p class="feature-description">Intelligente Konversationen mit semantischem Gedächtnis und adaptivem Feedback-System</p>
+            </a>
+        </div>
+
+        <!-- Weitere Features als Textlinks -->
+        <div style="text-align: center; margin-top: 30px; padding: 20px; background: var(--section-bg); border-radius: var(--radius-lg);">
+            <p style="color: var(--text-secondary); margin-bottom: 12px;">Weitere Features:</p>
+            <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
+                <a href="/frontend/pages/goals_ui.html" style="color: var(--primary-color); text-decoration: none;">🎯 Ziele</a>
+                <a href="/frontend/pages/knowledge_gaps_ui.html" style="color: var(--primary-color); text-decoration: none;">💡 Wissenslücken</a>
+                <a href="/frontend/pages/metrics_dashboard.html" style="color: var(--primary-color); text-decoration: none;">📊 Metriken</a>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <h2 style="margin-bottom: 24px; font-size: 28px;">Schnellzugriff</h2>
+        <div class="quick-actions">
+            <a href="/frontend/chat_ui.html" class="quick-action-btn">
+                <span class="quick-action-icon">🚀</span>
+                <div class="quick-action-text">
+                    <h3>Neue Konversation</h3>
+                    <p>Chat mit Lexi starten</p>
+                </div>
+            </a>
+
+            <a href="/frontend/pages/memory_management_ui.html" class="quick-action-btn">
+                <span class="quick-action-icon">🔄</span>
+                <div class="quick-action-text">
+                    <h3>Memory Cleanup</h3>
+                    <p>Konsolidierung & Synthetisierung</p>
+                </div>
+            </a>
+
+            <a href="/frontend/pages/config_ui.html" class="quick-action-btn">
+                <span class="quick-action-icon">⚙️</span>
+                <div class="quick-action-text">
+                    <h3>Einstellungen</h3>
+                    <p>System konfigurieren</p>
+                </div>
+            </a>
+
+            <a href="/docs" class="quick-action-btn">
+                <span class="quick-action-icon">📖</span>
+                <div class="quick-action-text">
+                    <h3>API Dokumentation</h3>
+                    <p>Swagger UI öffnen</p>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- Auth Modal -->
+    <div class="auth-modal" id="authModal">
+        <div class="auth-modal-content">
+            <button class="auth-modal-close" onclick="closeAuthModal()">×</button>
+
+            <!-- Tabs -->
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-tab="login" onclick="switchAuthTab('login')">
+                    Login
+                </button>
+                <button class="auth-tab" data-tab="register" onclick="switchAuthTab('register')">
+                    Registrieren
+                </button>
+            </div>
+
+            <!-- Login Form -->
+            <form class="auth-form active" id="loginForm" onsubmit="handleLogin(event)">
+                <div class="auth-form-error" id="loginError"></div>
+
+                <div class="auth-form-group">
+                    <label class="auth-form-label">E-Mail</label>
+                    <input type="email" class="auth-form-input" id="loginEmail" placeholder="deine@email.de" required>
+                </div>
+
+                <div class="auth-form-group">
+                    <label class="auth-form-label">Passwort</label>
+                    <input type="password" class="auth-form-input" id="loginPassword" placeholder="••••••••" required>
+                </div>
+
+                <button type="submit" class="auth-form-button" id="loginSubmitBtn">
+                    Anmelden
+                </button>
+
+                <div class="auth-divider">oder</div>
+
+                <button type="button" class="auth-guest-button" onclick="continueAsGuest()">
+                    Als Gast fortfahren
+                </button>
+            </form>
+
+            <!-- Register Form -->
+            <form class="auth-form" id="registerForm" onsubmit="handleRegister(event)">
+                <div class="auth-form-error" id="registerError"></div>
+                <div class="auth-form-success" id="registerSuccess"></div>
+
+                <div class="auth-form-group">
+                    <label class="auth-form-label">E-Mail</label>
+                    <input type="email" class="auth-form-input" id="registerEmail" placeholder="deine@email.de" required>
+                </div>
+
+                <div class="auth-form-group">
+                    <label class="auth-form-label">Passwort</label>
+                    <input type="password" class="auth-form-input" id="registerPassword" placeholder="Mindestens 8 Zeichen" required minlength="8">
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                        Min. 8 Zeichen, 1 Großbuchstabe, 1 Zahl
+                    </div>
+                </div>
+
+                <div class="auth-form-group">
+                    <label class="auth-form-label">Passwort bestätigen</label>
+                    <input type="password" class="auth-form-input" id="registerPasswordConfirm" placeholder="Passwort wiederholen" required minlength="8">
+                </div>
+
+                <button type="submit" class="auth-form-button" id="registerSubmitBtn">
+                    Registrieren
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <footer>
+        <p>Lexi AI v1.0 - Intelligent Memory System</p>
+        <p style="margin-top: 8px; font-size: 13px;">Powered by Ollama, Qdrant & ML-Based Consolidation</p>
+    </footer>
+
+    <script>
+        // Load system status
+        async function loadStatus() {
+            try {
+                // Load memory stats
+                const memoryResponse = await fetch('/v1/memory/stats');
+                const memoryData = await memoryResponse.json();
+                document.getElementById('memoryCount').textContent = memoryData.total || 0;
+
+                // Load goals stats
+                const goalsResponse = await fetch('/v1/goals/stats/summary');
+                const goalsData = await goalsResponse.json();
+                if (goalsData.success) {
+                    document.getElementById('activeGoals').textContent = goalsData.stats.active || 0;
+                }
+
+                // Load patterns stats
+                const patternsResponse = await fetch('/v1/patterns/stats/summary');
+                const patternsData = await patternsResponse.json();
+                if (patternsData.success) {
+                    document.getElementById('patternsDetected').textContent = patternsData.stats.total || 0;
+                }
+
+                // System uptime (placeholder)
+                document.getElementById('systemUptime').textContent = 'Online';
+
+            } catch (error) {
+                console.error('Error loading status:', error);
+                document.getElementById('memoryCount').textContent = '?';
+                document.getElementById('activeGoals').textContent = '?';
+                document.getElementById('patternsDetected').textContent = '?';
+                document.getElementById('systemUptime').textContent = '?';
+            }
+        }
+
+        // Load status on page load
+        document.addEventListener('DOMContentLoaded', loadStatus);
+
+        // Refresh status every 30 seconds
+        setInterval(loadStatus, 30000);
+    </script>
+
+    <!-- Security: XSS Protection with DOMPurify -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+    <script defer src="/frontend/js/sanitize.js"></script>
+
+    <!-- Auth and User Manager Scripts -->
+    <!-- CRITICAL: Load WITHOUT defer so available for inline script -->
+    <script src="/frontend/js/auth-manager.js"></script>
+    <script src="/frontend/js/user-manager.js"></script>
+    <script defer src="/frontend/js/auth-integration.js"></script>
+
+    <!-- Verbesserte Navigation Script -->
+    <script defer src="/frontend/js/navigation_improved.js"></script>
+    <script defer src="/frontend/js/breadcrumbs.js"></script>
+    <script defer src="/frontend/js/search.js"></script>
+
+    <script>
+        // Initialize AuthManager and UserManager
+        window.authManager = new AuthManager();
+        window.userManager = new UserManager(authManager);
+
+        // CRITICAL: Call updateAuthUI() immediately to show auth buttons
+        updateAuthUI();
+
+        // Initialize user and handle auth state
+        userManager.init().then(() => {
+            console.log('✅ User initialized:', userManager.getUserId());
+        }).catch(error => {
+            console.error('❌ UserManager initialization failed:', error);
+        }).finally(() => {
+            // Update UI after init completes
+            updateAuthUI();
+        });
+
+        // Update UI based on auth state
+        function updateAuthUI() {
+            const authButtonsAnonymous = document.getElementById('authButtonsAnonymous');
+            const userMenuDropdown = document.getElementById('userMenuDropdown');
+
+            if (authManager.isLoggedIn()) {
+                // User is logged in - show user menu
+                authButtonsAnonymous.style.display = 'none';
+                userMenuDropdown.style.display = 'block';
+
+                // Update user menu with current user info
+                const currentUser = authManager.getUserData();
+                if (currentUser) {
+                    const avatar = document.getElementById('userAvatar');
+                    const menuName = document.getElementById('userMenuName');
+                    const headerName = document.getElementById('userMenuHeaderName');
+                    const email = document.getElementById('userMenuEmail');
+
+                    const initial = currentUser.email ? currentUser.email.charAt(0).toUpperCase() : '?';
+                    avatar.textContent = initial;
+                    menuName.textContent = currentUser.display_name || currentUser.email || 'User';
+                    headerName.textContent = currentUser.display_name || currentUser.email || 'User';
+                    email.textContent = currentUser.email || '';
+                }
+            } else {
+                // User is not logged in - show login button
+                authButtonsAnonymous.style.display = 'flex';
+                userMenuDropdown.style.display = 'none';
+            }
+        }
+
+        // User menu dropdown toggle
+        const userMenuButton = document.getElementById('userMenuButton');
+        const userMenuContent = document.getElementById('userMenuContent');
+
+        if (userMenuButton) {
+            userMenuButton.addEventListener('click', () => {
+                const isVisible = userMenuContent.style.display === 'block';
+                userMenuContent.style.display = isVisible ? 'none' : 'block';
+            });
+
+            // Close menu when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!userMenuButton.contains(e.target) && !userMenuContent.contains(e.target)) {
+                    userMenuContent.style.display = 'none';
+                }
+            });
+        }
+
+        // Listen for auth state changes
+        window.addEventListener('auth-changed', () => {
+            updateAuthUI();
+        });
+
+        // Handle logout
+        async function handleLogout() {
+            try {
+                await authManager.logout();
+                updateAuthUI();
+                // Optionally reload or redirect
+                window.location.reload();
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
+        }
+    </script>
+</body>
+</html>

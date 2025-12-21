@@ -1,0 +1,189 @@
+<!--
+    Lexi AI - Verbesserte Navigation mit Dropdown-Menüs
+
+    VERWENDUNG:
+    1. Kopiere die CSS-Links in den <head>:
+       <link rel="stylesheet" href="/frontend/css/global.css">
+       <link rel="stylesheet" href="/frontend/css/navigation_improved.css">
+
+    2. Kopiere den nav-wrapper direkt nach <body>
+
+    3. Kopiere das Script vor </body>:
+       <script defer src="/frontend/js/navigation_improved.js"></script>
+-->
+
+<!-- Navigation Bar -->
+<div class="nav-wrapper">
+    <nav class="nav-bar" role="navigation" aria-label="Hauptnavigation">
+        <!-- Brand -->
+        <a href="/" class="nav-brand" aria-label="Zurück zur Startseite">
+            <span class="logo">🤖</span>
+            <span>Lexi AI</span>
+        </a>
+
+        <!-- Mobile Hamburger Menu -->
+        <button class="hamburger-menu" id="hamburgerMenu" aria-label="Menü öffnen">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
+
+        <!-- Navigation Links -->
+        <div class="nav-links" id="navLinks">
+            <!-- Primäre Funktionen -->
+            <div class="nav-group primary">
+                <a href="/chat" class="nav-link primary" data-route="/frontend/chat_ui.html">
+                    <span>💬</span>
+                    <span>Chat</span>
+                </a>
+            </div>
+
+            <!-- Intelligenz Dropdown -->
+            <div class="nav-dropdown">
+                <button class="nav-dropdown-toggle" aria-haspopup="true" aria-expanded="false">
+                    <span>🧠</span>
+                    <span>Intelligenz</span>
+                    <span class="dropdown-icon">▼</span>
+                </button>
+                <div class="nav-dropdown-menu" role="menu">
+                    <a href="/memory" class="nav-dropdown-item" data-route="/frontend/pages/memory_management_ui.html" role="menuitem">
+                        <span>🧠</span>
+                        <span>Memory</span>
+                    </a>
+                    <a href="/patterns" class="nav-dropdown-item" data-route="/frontend/pages/patterns_ui.html" role="menuitem">
+                        <span>🔍</span>
+                        <span>Patterns</span>
+                    </a>
+                    <a href="/gaps" class="nav-dropdown-item" data-route="/frontend/pages/knowledge_gaps_ui.html" role="menuitem">
+                        <span>💡</span>
+                        <span>Wissenslücken</span>
+                    </a>
+                    <a href="/goals" class="nav-dropdown-item" data-route="/frontend/pages/goals_ui.html" role="menuitem">
+                        <span>🎯</span>
+                        <span>Ziele</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Verwaltung -->
+            <div class="nav-group secondary">
+                <a href="/dashboard" class="nav-link" data-route="/frontend/pages/metrics_dashboard.html" title="Dashboard">
+                    <span>📊</span>
+                </a>
+                <a href="/settings" class="nav-link" data-route="/frontend/pages/config_ui.html" title="Einstellungen">
+                    <span>⚙️</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- User Authentication Section -->
+        <div class="user-info-section" style="margin-left: auto; display: flex; align-items: center; gap: 12px;">
+            <!-- Auth Buttons (Anonymous Users) -->
+            <div class="auth-buttons" id="authButtonsAnonymous" style="display: none;">
+                <button class="auth-button-guest" onclick="continueAsGuest()">
+                    Als Gast fortfahren
+                </button>
+                <button class="auth-button-login" onclick="openAuthModal('login')">
+                    Anmelden
+                </button>
+            </div>
+
+            <!-- User Menu (Authenticated Users) -->
+            <div class="user-menu-dropdown" id="userMenuDropdown" style="display: none;">
+                <button class="user-menu-button" id="userMenuButton">
+                    <div class="user-menu-avatar" id="userAvatar">?</div>
+                    <span id="userMenuName">User</span>
+                    <span style="margin-left: 4px;">▼</span>
+                </button>
+                <div class="user-menu-content" id="userMenuContent">
+                    <div class="user-menu-header">
+                        <div style="font-weight: 500;" id="userMenuHeaderName">User</div>
+                        <div class="user-menu-email" id="userMenuEmail">email@example.com</div>
+                    </div>
+                    <div class="user-menu-items">
+                        <button class="user-menu-item" onclick="window.location.href='/frontend/pages/config_ui.html'">
+                            ⚙️ Einstellungen
+                        </button>
+                        <button class="user-menu-item" onclick="window.location.href='/frontend/pages/memory_management_ui.html'">
+                            🧠 Meine Memories
+                        </button>
+                        <div class="user-menu-divider"></div>
+                        <button class="user-menu-item danger" onclick="handleLogout()">
+                            🚪 Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+</div>
+
+<!-- Auth Modal (wird auf jeder Seite eingefügt) -->
+<div class="auth-modal" id="authModal">
+    <div class="auth-modal-content">
+        <button class="auth-modal-close" onclick="closeAuthModal()">×</button>
+
+        <!-- Tabs -->
+        <div class="auth-tabs">
+            <button class="auth-tab active" data-tab="login" onclick="switchAuthTab('login')">
+                Login
+            </button>
+            <button class="auth-tab" data-tab="register" onclick="switchAuthTab('register')">
+                Registrieren
+            </button>
+        </div>
+
+        <!-- Login Form -->
+        <form class="auth-form active" id="loginForm" onsubmit="handleLogin(event)">
+            <div class="auth-form-error" id="loginError"></div>
+
+            <div class="auth-form-group">
+                <label class="auth-form-label">E-Mail</label>
+                <input type="email" class="auth-form-input" id="loginEmail" placeholder="deine@email.de" required>
+            </div>
+
+            <div class="auth-form-group">
+                <label class="auth-form-label">Passwort</label>
+                <input type="password" class="auth-form-input" id="loginPassword" placeholder="••••••••" required>
+            </div>
+
+            <button type="submit" class="auth-form-button" id="loginSubmitBtn">
+                Anmelden
+            </button>
+
+            <div class="auth-divider">oder</div>
+
+            <button type="button" class="auth-guest-button" onclick="continueAsGuest()">
+                Als Gast fortfahren
+            </button>
+        </form>
+
+        <!-- Register Form -->
+        <form class="auth-form" id="registerForm" onsubmit="handleRegister(event)">
+            <div class="auth-form-error" id="registerError"></div>
+            <div class="auth-form-success" id="registerSuccess"></div>
+
+            <div class="auth-form-group">
+                <label class="auth-form-label">E-Mail</label>
+                <input type="email" class="auth-form-input" id="registerEmail" placeholder="deine@email.de" required>
+            </div>
+
+            <div class="auth-form-group">
+                <label class="auth-form-label">Passwort</label>
+                <input type="password" class="auth-form-input" id="registerPassword" placeholder="Mindestens 8 Zeichen" required minlength="8">
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                    Min. 8 Zeichen, 1 Großbuchstabe, 1 Zahl
+                </div>
+            </div>
+
+            <div class="auth-form-group">
+                <label class="auth-form-label">Passwort bestätigen</label>
+                <input type="password" class="auth-form-input" id="registerPasswordConfirm" placeholder="Passwort wiederholen" required minlength="8">
+            </div>
+
+            <button type="submit" class="auth-form-button" id="registerSubmitBtn">
+                Registrieren
+            </button>
+        </form>
+    </div>
+</div>

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LexiAI - Login</title>
+    <link rel="stylesheet" href="../css/auth.css">
+    <link rel="stylesheet" href="css/config.css">
+</head>
+<body class="auth-page">
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h1>🤖 LexiAI</h1>
+                <p class="subtitle">Willkommen zurück</p>
+            </div>
+
+            <form id="loginForm" class="auth-form">
+                <div class="form-group">
+                    <label for="email">E-Mail</label>
+                    <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        required
+                        autocomplete="email"
+                        placeholder="deine@email.com"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Passwort</label>
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        required
+                        autocomplete="current-password"
+                        placeholder="••••••••"
+                    >
+                </div>
+
+                <div class="form-group form-checkbox">
+                    <input type="checkbox" id="remember" name="remember">
+                    <label for="remember">Angemeldet bleiben</label>
+                </div>
+
+                <button type="submit" class="btn btn-primary" id="loginButton">
+                    <span class="btn-text">Anmelden</span>
+                    <span class="btn-loader" style="display: none;">
+                        <span class="spinner"></span> Anmeldung läuft...
+                    </span>
+                </button>
+
+                <div id="errorMessage" class="error-message" style="display: none;"></div>
+            </form>
+
+            <div class="auth-footer">
+                <p>Noch kein Konto? <a href="register.html">Registrieren</a></p>
+                <p><a href="#" id="forgotPassword">Passwort vergessen?</a></p>
+                <p class="anonymous-option">
+                    <a href="../chat_ui.html">Als Gast fortfahren</a>
+                </p>
+            </div>
+        </div>
+
+        <div class="auth-info">
+            <h2>🧠 Intelligente Konversationen</h2>
+            <ul>
+                <li>✓ Personalisierte Gespräche mit Kontext-Erinnerung</li>
+                <li>✓ ML-basierte Kategorisierung deiner Interessen</li>
+                <li>✓ Sichere Speicherung deiner Präferenzen</li>
+                <li>✓ Geräteübergreifende Synchronisation</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- CRITICAL: Load auth-manager.js WITHOUT defer for synchronous initialization -->
+    <script src="../js/auth-manager.js"></script>
+    <script>
+        const authManager = new AuthManager();
+
+        // Redirect if already logged in
+        if (authManager.isLoggedIn()) {
+            window.location.href = '../chat_ui.html';
+        }
+
+        const loginForm = document.getElementById('loginForm');
+        const loginButton = document.getElementById('loginButton');
+        const errorMessage = document.getElementById('errorMessage');
+        const btnText = loginButton.querySelector('.btn-text');
+        const btnLoader = loginButton.querySelector('.btn-loader');
+
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            // Show loading state
+            btnText.style.display = 'none';
+            btnLoader.style.display = 'inline-flex';
+            loginButton.disabled = true;
+            errorMessage.style.display = 'none';
+
+            try {
+                const result = await authManager.login(email, password);
+
+                if (result.success) {
+                    // Success - redirect to main app
+                    window.location.href = '../chat_ui.html';
+                } else {
+                    // Show error
+                    errorMessage.textContent = result.error || 'Login fehlgeschlagen';
+                    errorMessage.style.display = 'block';
+                }
+            } catch (error) {
+                errorMessage.textContent = 'Netzwerkfehler. Bitte versuche es erneut.';
+                errorMessage.style.display = 'block';
+            } finally {
+                // Reset button state
+                btnText.style.display = 'inline';
+                btnLoader.style.display = 'none';
+                loginButton.disabled = false;
+            }
+        });
+
+        // Forgot password handler
+        document.getElementById('forgotPassword').addEventListener('click', (e) => {
+            e.preventDefault();
+            alert('Passwort-Reset-Funktion wird bald verfügbar sein.');
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,2243 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lexi - Konfiguration</title>
+    <link rel="icon" type="image/x-icon" href="/frontend/pages/lexi_favicon.ico">
+
+    <!-- Zentrale CSS-Dateien -->
+    <link rel="stylesheet" href="/frontend/css/global.css">
+    <link rel="stylesheet" href="/frontend/css/navigation_improved.css">
+    <link rel="stylesheet" href="/frontend/css/breadcrumbs.css">
+    <link rel="stylesheet" href="/frontend/css/search.css">
+    <link rel="stylesheet" href="/frontend/css/modal-auth.css">
+
+    <style>
+        /* CSS Variables werden von global.css bereitgestellt */
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .nav-bar {
+            background: var(--card-bg);
+            padding: 15px 25px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid var(--border-color);
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-left: auto;
+            padding: 8px 16px;
+            background: var(--section-bg);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .user-info-icon {
+            font-size: 20px;
+        }
+
+        .user-info-text {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .user-info-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .user-display-name {
+            font-size: 14px;
+            color: var(--text-color);
+            font-weight: 500;
+        }
+
+        .user-edit-btn {
+            background: none;
+            border: none;
+            color: var(--primary-color);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px;
+            transition: all 0.2s;
+            border-radius: 4px;
+        }
+
+        .user-edit-btn:hover {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .nav-link {
+            color: var(--text-color);
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            min-width: 100px;
+            text-align: center;
+        }
+
+        .nav-link:hover {
+            background: var(--section-bg);
+            border-color: var(--primary-color);
+        }
+
+        .nav-link.active {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #ff6f00 0%, #ffb300 100%);
+            padding: 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .header h1 {
+            font-size: 32px;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 16px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            background: var(--card-bg);
+            border: 2px solid var(--border-color);
+            color: var(--text-color);
+            padding: 12px 24px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 15px;
+            font-weight: 500;
+        }
+
+        .tab:hover {
+            border-color: var(--primary-color);
+            background: var(--section-bg);
+        }
+
+        .tab.active {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .grid {
+            display: grid;
+            gap: 20px;
+        }
+
+        .grid-2 {
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .card-header h3 {
+            font-size: 18px;
+            color: var(--text-color);
+            margin: 0;
+        }
+
+        .card-header .icon {
+            font-size: 24px;
+        }
+
+        .status-grid {
+            display: grid;
+            gap: 15px;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: var(--section-bg);
+            border-radius: 8px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .status-indicator.ok {
+            background: var(--success-color);
+            box-shadow: 0 0 8px var(--success-color);
+        }
+
+        .status-indicator.error {
+            background: var(--error-color);
+            box-shadow: 0 0 8px var(--error-color);
+        }
+
+        .status-indicator.loading {
+            background: var(--warning-color);
+            box-shadow: 0 0 8px var(--warning-color);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-text {
+            flex: 1;
+            font-size: 14px;
+        }
+
+        .status-label {
+            color: var(--text-secondary);
+        }
+
+        .status-value {
+            color: var(--text-color);
+            font-weight: 500;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-color);
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(124, 77, 255, 0.1);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        .form-hint {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 6px;
+        }
+
+        .toggle-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            background: var(--section-bg);
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+
+        .toggle-label {
+            flex: 1;
+            font-size: 14px;
+            color: var(--text-color);
+        }
+
+        .toggle-description {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .switch {
+            position: relative;
+            width: 48px;
+            height: 26px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--border-color);
+            transition: 0.3s;
+            border-radius: 26px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--primary-color);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(22px);
+        }
+
+        .warning-box {
+            background: rgba(255, 152, 0, 0.1);
+            border: 1px solid var(--warning-color);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .warning-box h4 {
+            color: var(--warning-color);
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .warning-box p {
+            color: var(--text-secondary);
+            font-size: 13px;
+            margin: 0;
+        }
+
+        .btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(124, 77, 255, 0.3);
+        }
+
+        .btn:hover {
+            background: var(--primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(124, 77, 255, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: var(--section-bg);
+            color: var(--text-color);
+            box-shadow: none;
+        }
+
+        .btn-secondary:hover {
+            background: var(--border-color);
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .info-row {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 12px;
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .info-value {
+            color: var(--text-color);
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .message {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-top: 16px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .message.success {
+            background: rgba(76, 175, 80, 0.1);
+            border: 1px solid var(--success-color);
+            color: var(--success-color);
+            display: block;
+        }
+
+        .message.error {
+            background: rgba(244, 67, 54, 0.1);
+            border: 1px solid var(--error-color);
+            color: var(--error-color);
+            display: block;
+        }
+
+        /* Model Card Styles */
+        .model-card {
+            background: var(--section-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            transition: all 0.2s;
+        }
+
+        .model-card:hover {
+            border-color: var(--primary-color);
+        }
+
+        .model-card.active-model {
+            border-color: var(--success-color);
+            background: rgba(76, 175, 80, 0.05);
+        }
+
+        .model-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 8px;
+        }
+
+        .model-name {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-color);
+            font-family: 'Courier New', monospace;
+        }
+
+        .model-badge {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-recommended {
+            background: rgba(124, 77, 255, 0.2);
+            color: var(--primary-color);
+        }
+
+        .badge-required {
+            background: rgba(255, 152, 0, 0.2);
+            color: var(--warning-color);
+        }
+
+        .badge-active {
+            background: rgba(76, 175, 80, 0.2);
+            color: var(--success-color);
+        }
+
+        .model-description {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            line-height: 1.4;
+        }
+
+        .model-meta {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 12px;
+            font-size: 12px;
+        }
+
+        .model-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-secondary);
+        }
+
+        .model-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 13px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .btn-pull {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-pull:hover {
+            background: var(--primary-hover);
+        }
+
+        .btn-pull:disabled {
+            background: var(--border-color);
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .btn-delete {
+            background: rgba(244, 67, 54, 0.1);
+            color: var(--error-color);
+            border: 1px solid var(--error-color);
+        }
+
+        .btn-delete:hover {
+            background: var(--error-color);
+            color: white;
+        }
+
+        .progress-container {
+            margin-top: 12px;
+            display: none;
+        }
+
+        .progress-container.active {
+            display: block;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: var(--input-bg);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary-color), var(--primary-hover));
+            border-radius: 4px;
+            transition: width 0.3s;
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        .progress-text {
+            font-size: 12px;
+            color: var(--text-secondary);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .model-tags {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+
+        .model-tag {
+            padding: 3px 8px;
+            background: var(--input-bg);
+            border-radius: 4px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        /* Password Change Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 20px;
+            color: var(--text-color);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 28px;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            background: var(--input-bg);
+            color: var(--text-color);
+        }
+
+        .modal-body {
+            padding: 24px;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation -->
+        <div class="nav-wrapper">
+<nav class="nav-bar" role="navigation" aria-label="Hauptnavigation">
+            <!-- Brand -->
+            <a href="/" class="nav-brand" aria-label="Zurück zur Startseite">
+                <span class="logo">🤖</span>
+                <span>Lexi AI</span>
+            </a>
+
+            <!-- Mobile Hamburger Menu -->
+            <button class="hamburger-menu" id="hamburgerMenu" aria-label="Menü öffnen">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+
+            <!-- Navigation Links -->
+            <div class="nav-links" id="navLinks">
+                <!-- Primäre Funktionen -->
+                <div class="nav-group primary">
+                    <a href="/frontend/chat_ui.html" class="nav-link primary">
+                        <span>💬</span>
+                        <span>Chat</span>
+                    </a>
+                    <a href="/frontend/chat_ui.html" class="nav-link primary">
+                        <span>🎤</span>
+                        <span>Voice</span>
+                    </a>
+                </div>
+
+                <!-- Intelligenz Dropdown -->
+                <div class="nav-dropdown">
+                    <button class="nav-dropdown-toggle" aria-haspopup="true" aria-expanded="false">
+                        <span>🧠</span>
+                        <span>Intelligenz</span>
+                        <span class="dropdown-icon">▼</span>
+                    </button>
+                    <div class="nav-dropdown-menu" role="menu">
+                        <a href="/frontend/pages/memory_management_ui.html" class="nav-dropdown-item" role="menuitem">
+                            <span>🧠</span>
+                            <span>Memory</span>
+                        </a>
+                        <a href="/frontend/pages/patterns_ui.html" class="nav-dropdown-item" role="menuitem">
+                            <span>🔍</span>
+                            <span>Patterns</span>
+                        </a>
+                        <a href="/frontend/pages/knowledge_gaps_ui.html" class="nav-dropdown-item" role="menuitem">
+                            <span>💡</span>
+                            <span>Wissenslücken</span>
+                        </a>
+                        <a href="/frontend/pages/goals_ui.html" class="nav-dropdown-item" role="menuitem">
+                            <span>🎯</span>
+                            <span>Ziele</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Verwaltung -->
+                <div class="nav-group secondary">
+                    <a href="/frontend/pages/metrics_dashboard.html" class="nav-link" title="Dashboard">
+                        <span>📊</span>
+                    </a>
+                    <a href="/frontend/pages/config_ui.html" class="nav-link" title="Einstellungen">
+                        <span>⚙️</span>
+                    </a>
+                </div>
+
+                <!-- User Authentication Section -->
+                <div class="user-info-section" style="margin-left: auto; display: flex; align-items: center; gap: 12px;">
+                    <!-- Auth Buttons (Anonymous Users) -->
+                    <div class="auth-buttons" id="authButtonsAnonymous" style="display: none;">
+                        <button class="auth-button-guest" onclick="continueAsGuest()">
+                            Als Gast fortfahren
+                        </button>
+                        <button class="auth-button-login" onclick="openAuthModal('login')">
+                            Anmelden
+                        </button>
+                    </div>
+
+                    <!-- User Menu (Authenticated Users) -->
+                    <div class="user-menu-dropdown" id="userMenuDropdown" style="display: none;">
+                        <button class="user-menu-button" id="userMenuButton">
+                            <div class="user-menu-avatar" id="userAvatar">?</div>
+                            <span id="userMenuName">User</span>
+                            <span style="margin-left: 4px;">▼</span>
+                        </button>
+                        <div class="user-menu-content" id="userMenuContent">
+                            <div class="user-menu-header">
+                                <div style="font-weight: 500;" id="userMenuHeaderName">User</div>
+                                <div class="user-menu-email" id="userMenuEmail">email@example.com</div>
+                            </div>
+                            <div class="user-menu-items">
+                                <button class="user-menu-item" onclick="window.location.href='/frontend/pages/config_ui.html'">
+                                    ⚙️ Einstellungen
+                                </button>
+                                <button class="user-menu-item" onclick="window.location.href='/frontend/pages/memory_management_ui.html'">
+                                    🧠 Meine Memories
+                                </button>
+                                <div class="user-menu-divider"></div>
+                                <button class="user-menu-item danger" onclick="handleLogout()">
+                                    🚪 Logout
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        </div>
+
+        <!-- Header -->
+        <div class="header">
+            <h1>⚙️ Konfiguration</h1>
+            <p>System-Einstellungen und Komponenten-Status</p>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('overview')">📊 Übersicht</div>
+            <div class="tab" onclick="switchTab('profile')">👤 Profil</div>
+            <div class="tab" onclick="switchTab('llm')">🤖 LLM & Embeddings</div>
+            <div class="tab" onclick="switchTab('memory')">💾 Memory & Datenbank</div>
+            <div class="tab" onclick="switchTab('integrations')">🏠 Integrationen</div>
+            <div class="tab" onclick="switchTab('features')">✨ Features</div>
+            <div class="tab" onclick="switchTab('advanced')">🔧 Erweitert</div>
+        </div>
+
+        <!-- Tab Content: Overview -->
+        <div id="overview-tab" class="tab-content active">
+            <div class="grid grid-2">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="icon">👤</span>
+                        <h3>Benutzerprofil</h3>
+                    </div>
+                    <div id="user-profile">
+                        <div class="info-row">
+                            <div class="info-label">Benutzer-ID:</div>
+                            <div class="info-value user-id">-</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Anzeigename:</div>
+                            <div class="info-value user-display-name">-</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Erstellt am:</div>
+                            <div class="info-value" id="user-created-at">-</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Chat-Nachrichten:</div>
+                            <div class="info-value" id="user-message-count">-</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 16px;">
+                        <button class="btn" onclick="window.userManager && window.userManager.showNameUpdateDialog()">
+                            ✏️ Namen ändern
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="icon">🏥</span>
+                        <h3>System-Status</h3>
+                    </div>
+                    <div class="status-grid" id="system-status">
+                        <div class="status-item">
+                            <div class="status-indicator loading" id="llm-status"></div>
+                            <div class="status-text">
+                                <div class="status-label">LLM Service</div>
+                                <div class="status-value" id="llm-status-text">Prüfe...</div>
+                            </div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-indicator loading" id="embedding-status"></div>
+                            <div class="status-text">
+                                <div class="status-label">Embedding Service</div>
+                                <div class="status-value" id="embedding-status-text">Prüfe...</div>
+                            </div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-indicator loading" id="database-status"></div>
+                            <div class="status-text">
+                                <div class="status-label">Qdrant Datenbank</div>
+                                <div class="status-value" id="database-status-text">Prüfe...</div>
+                            </div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-indicator loading" id="dimension-status"></div>
+                            <div class="status-text">
+                                <div class="status-label">Embedding-Dimensionen</div>
+                                <div class="status-value" id="dimension-status-text">Prüfe...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="icon">📋</span>
+                        <h3>Aktuelle Konfiguration</h3>
+                    </div>
+                    <div id="config-overview">
+                        <div class="info-row">
+                            <div class="info-label">LLM Model:</div>
+                            <div class="info-value" id="current-llm-model">-</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Embedding Model:</div>
+                            <div class="info-value" id="current-embedding-model">-</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Qdrant Host:</div>
+                            <div class="info-value" id="current-qdrant-host">-</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Memory Collection:</div>
+                            <div class="info-value" id="current-collection">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content: Profile -->
+        <div id="profile-tab" class="tab-content">
+            <div class="grid grid-2">
+                <!-- User Profile Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="icon">👤</span>
+                        <h3>Benutzerprofil</h3>
+                    </div>
+                    <div id="full-profile-widget"></div>
+                </div>
+
+                <!-- Account Management Card -->
+                <div class="card" id="account-management-card" style="display: none;">
+                    <div class="card-header">
+                        <span class="icon">🔐</span>
+                        <h3>Account-Verwaltung</h3>
+                    </div>
+                    <div id="account-info">
+                        <div class="info-row">
+                            <div class="info-label">E-Mail:</div>
+                            <div class="info-value" id="account-email">-</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Account-Typ:</div>
+                            <div class="info-value" id="account-type">Registriert</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Account-Status:</div>
+                            <div class="info-value" id="account-status">Aktiv</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 20px;">
+                        <button class="btn btn-secondary" onclick="openPasswordChangeModal()">
+                            🔄 Passwort ändern
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Anonymous User Card -->
+                <div class="card" id="anonymous-user-card" style="display: none;">
+                    <div class="card-header">
+                        <span class="icon">🌟</span>
+                        <h3>Account erstellen</h3>
+                    </div>
+                    <div class="info-box">
+                        <h4>💡 Vorteile eines registrierten Accounts:</h4>
+                        <ul>
+                            <li>Geräteübergreifende Synchronisation</li>
+                            <li>Gesicherte Speicherung deiner Gespräche</li>
+                            <li>Personalisiertes Profil-Learning</li>
+                            <li>Zugriff auf erweiterte Features</li>
+                        </ul>
+                    </div>
+                    <div style="margin-top: 20px; display: flex; gap: 12px;">
+                        <button class="btn" onclick="window.location.href='/frontend/pages/register.html'">
+                            ✨ Jetzt registrieren
+                        </button>
+                        <button class="btn btn-secondary" onclick="window.location.href='/frontend/pages/login.html'">
+                            🔐 Anmelden
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content: LLM -->
+        <div id="llm-tab" class="tab-content">
+            <form id="llm-form">
+                <div class="grid">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="icon">🤖</span>
+                            <h3>Ollama LLM Konfiguration</h3>
+                        </div>
+                        <div class="form-group">
+                            <label for="ollama-url">Ollama URL:</label>
+                            <input type="text" id="ollama-url" name="ollama_url" placeholder="http://localhost:11434">
+                            <div class="form-hint">URL des Ollama LLM Services</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="llm-model">LLM Modell:</label>
+                            <input type="text" id="llm-model" name="llm_model" placeholder="gemma3:4b-it-qat">
+                            <div class="form-hint">Name des zu verwendenden LLM-Modells</div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="icon">🔤</span>
+                            <h3>Embedding Konfiguration</h3>
+                        </div>
+                        <div class="form-group">
+                            <label for="embedding-url">Embedding URL:</label>
+                            <input type="text" id="embedding-url" name="embedding_url" placeholder="http://localhost:11434">
+                            <div class="form-hint">URL des Embedding Services</div>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" id="same-url" style="margin-right: 8px;">
+                                <span>Gleiche URL wie Ollama LLM verwenden</span>
+                            </label>
+                            <div class="form-hint">Embedding-URL automatisch mit Ollama-URL synchronisieren</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="embedding-model">Embedding Modell:</label>
+                            <input type="text" id="embedding-model" name="embedding_model" placeholder="nomic-embed-text">
+                            <div class="form-hint">Name des Embedding-Modells (z.B. nomic-embed-text für 768 Dimensionen)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button type="submit" class="btn">💾 Speichern</button>
+                    <button type="button" class="btn btn-secondary" onclick="loadConfig()">🔄 Neu laden</button>
+                </div>
+                <div id="llm-message" class="message"></div>
+            </form>
+
+            <!-- Ollama Model Manager Section -->
+            <div class="grid" style="margin-top: 30px;">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="icon">📦</span>
+                        <h3>Ollama Model Manager</h3>
+                    </div>
+
+                    <!-- Installed Models -->
+                    <div style="margin-bottom: 24px;">
+                        <h4 style="color: var(--text-color); margin-bottom: 12px; font-size: 16px;">Installierte Modelle</h4>
+                        <div id="installed-models" style="display: grid; gap: 12px;">
+                            <div style="text-align: center; padding: 20px; color: var(--text-secondary);">
+                                Lade Modelle...
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recommended Models -->
+                    <div>
+                        <h4 style="color: var(--text-color); margin-bottom: 12px; font-size: 16px;">Empfohlene Modelle</h4>
+                        <div id="recommended-models" style="display: grid; gap: 12px;">
+                            <div style="text-align: center; padding: 20px; color: var(--text-secondary);">
+                                Lade Empfehlungen...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content: Memory -->
+        <div id="memory-tab" class="tab-content">
+            <form id="memory-form">
+                <div class="grid">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="icon">💾</span>
+                            <h3>Qdrant Datenbank</h3>
+                        </div>
+                        <div class="form-group">
+                            <label for="qdrant-host">Qdrant Host:</label>
+                            <input type="text" id="qdrant-host" name="qdrant_host" placeholder="localhost">
+                            <div class="form-hint">Hostname oder IP-Adresse des Qdrant Servers</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="qdrant-port">Qdrant Port:</label>
+                            <input type="number" id="qdrant-port" name="qdrant_port" placeholder="6333">
+                            <div class="form-hint">Port des Qdrant REST API (Standard: 6333)</div>
+                        </div>
+
+                        <div class="warning-box">
+                            <h4>⚠️ Gefährliche Aktion</h4>
+                            <p>Das Neuerstellen der Vektor-Kollektion löscht alle gespeicherten Memories! Nur verwenden bei Dimensionsproblemen.</p>
+                        </div>
+
+                        <div class="toggle-group">
+                            <div>
+                                <div class="toggle-label">Kollektion neu erstellen</div>
+                                <div class="toggle-description">Löscht alle Memories und erstellt Collection neu</div>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="force-recreate" name="force_recreate_collection">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="icon">🔐</span>
+                            <h3>Sicherheit & API-Keys</h3>
+                        </div>
+                        <div class="form-group">
+                            <label for="api-key">API-Schlüssel:</label>
+                            <input type="password" id="api-key" name="api_key" placeholder="API-Schlüssel für Authentifizierung">
+                            <div class="form-hint">Wird für geschützte API-Endpunkte benötigt</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="tavily-api-key">Tavily API-Schlüssel:</label>
+                            <input type="password" id="tavily-api-key" name="tavily_api_key" placeholder="Tavily API-Key für Web-Suche">
+                            <div class="form-hint">🌐 Ermöglicht Web-Suche für aktuelle Informationen. Kostenlosen Key unter <a href="https://tavily.com" target="_blank" style="color: var(--primary-color);">tavily.com</a> erhalten (1000 Suchen/Monat gratis)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button type="submit" class="btn">💾 Speichern</button>
+                    <button type="button" class="btn btn-secondary" onclick="loadConfig()">🔄 Neu laden</button>
+                </div>
+                <div id="memory-message" class="message"></div>
+            </form>
+        </div>
+
+        <!-- Tab Content: Features -->
+        <div id="features-tab" class="tab-content">
+            <form id="features-form">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="icon">✨</span>
+                        <h3>Feature-Flags</h3>
+                    </div>
+
+                    <div class="toggle-group">
+                        <div>
+                            <div class="toggle-label">Streaming-Antworten</div>
+                            <div class="toggle-description">Antworten werden in Echtzeit gestreamt</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" name="features" value="streaming" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="toggle-group">
+                        <div>
+                            <div class="toggle-label">Gedächtnis-Feedback</div>
+                            <div class="toggle-description">Zeigt Feedback zu gespeicherten Memories</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" name="features" value="memory_feedback" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="toggle-group">
+                        <div>
+                            <div class="toggle-label">Erweiterte Gedächtnissuche</div>
+                            <div class="toggle-description">Nutzt fortgeschrittene Suchverfahren</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" name="features" value="advanced_memory_search" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="toggle-group">
+                        <div>
+                            <div class="toggle-label">Benutzerspezifisches Gedächtnis</div>
+                            <div class="toggle-description">Separate Memories pro Benutzer</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" name="features" value="user_specific_memory" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="toggle-group">
+                        <div>
+                            <div class="toggle-label">Automatisches Tagging</div>
+                            <div class="toggle-description">Memories werden automatisch kategorisiert</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" name="features" value="auto_memory_tagging" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="toggle-group">
+                        <div>
+                            <div class="toggle-label">Audit-Logging</div>
+                            <div class="toggle-description">Detailliertes Logging aller Aktionen</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" name="features" value="audit_logging">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button type="submit" class="btn">💾 Speichern</button>
+                    <button type="button" class="btn btn-secondary" onclick="loadConfig()">🔄 Neu laden</button>
+                </div>
+                <div id="features-message" class="message"></div>
+            </form>
+        </div>
+
+        <!-- Tab Content: Advanced -->
+        <div id="advanced-tab" class="tab-content">
+            <form id="advanced-form">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="icon">💭</span>
+                        <h3>System-Prompt</h3>
+                    </div>
+                    <div class="form-group">
+                        <label for="system-prompt">Prompt für Lexi:</label>
+                        <textarea id="system-prompt" name="system_prompt" rows="8" placeholder="z. B.: Du bist Lexi, eine charmante KI ..."></textarea>
+                        <div class="form-hint">Definiert die Persönlichkeit und das Verhalten von Lexi</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="icon">📝</span>
+                        <h3>Logging</h3>
+                    </div>
+                    <div class="form-group">
+                        <label for="audit-log-path">Audit-Log Pfad:</label>
+                        <input type="text" id="audit-log-path" name="audit_log_path" placeholder="backend/logs/audit.log">
+                        <div class="form-hint">Speicherort für Audit-Logs</div>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button type="submit" class="btn">💾 Speichern</button>
+                    <button type="button" class="btn btn-secondary" onclick="loadConfig()">🔄 Neu laden</button>
+                </div>
+                <div id="advanced-message" class="message"></div>
+            </form>
+        </div>
+    </div>
+        <!-- Tab Content: Integrations -->
+        <div id="integrations-tab" class="tab-content">
+            <form id="integrations-form">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="icon">🏠</span>
+                        <h3>Home Assistant</h3>
+                    </div>
+                    <div class="form-group">
+                        <label for="ha-url">Home Assistant URL:</label>
+                        <input type="text" id="ha-url" name="ha_url" placeholder="http://homeassistant.local:8123">
+                        <div class="form-hint">URL zu deiner Home Assistant Instanz (ohne abschließenden Slash)</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="ha-token">Long-Lived Access Token:</label>
+                        <input type="password" id="ha-token" name="ha_token" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+                        <div class="form-hint">
+                            Erstelle einen Token in Home Assistant unter: Profil → Langlebige Zugriffstoken
+                            <br>
+                            <a href="#" onclick="document.getElementById('ha-token').type = document.getElementById('ha-token').type === 'password' ? 'text' : 'password'; return false;" style="color: var(--primary-color);">Token anzeigen/verbergen</a>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="status-item">
+                            <div class="status-indicator" id="ha-status-indicator"></div>
+                            <div class="status-text">
+                                <span class="status-label">Status:</span>
+                                <span class="status-value" id="ha-status-text">Nicht konfiguriert</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="icon">🔧</span>
+                        <h3>Integration Features</h3>
+                    </div>
+                    <div class="toggle-group">
+                        <div>
+                            <div class="toggle-label">Home Assistant aktivieren</div>
+                            <div class="toggle-description">Smart Home Steuerung über Lexi ermöglichen</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" name="features" value="home_assistant" id="feature-home-assistant" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button type="submit" class="btn">💾 Speichern</button>
+                    <button type="button" class="btn btn-secondary" onclick="loadConfig()">🔄 Neu laden</button>
+                    <button type="button" class="btn btn-secondary" onclick="testHAConnection()">🔍 Verbindung testen</button>
+                </div>
+                <div id="integrations-message" class="message"></div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Debug mode - set to false for production
+        const DEBUG = false;
+
+        // Simple debug logger (disabled in production)
+        const debug = {
+            log: (...args) => DEBUG && console.log(...args),
+            info: (...args) => DEBUG && console.info(...args)
+        };
+
+        // Global error boundary
+        window.addEventListener('error', (event) => {
+            console.error('Global error caught:', event.error);
+            // Prevent error from causing blank page
+            event.preventDefault();
+        });
+
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('Unhandled promise rejection:', event.reason);
+            // Prevent unhandled promise from breaking the app
+            event.preventDefault();
+        });
+
+        // Store loaded API key for authentication
+        let loadedApiKey = '';
+
+        // Tab Switching
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Show selected tab
+            document.getElementById(tabName + '-tab').classList.add('active');
+
+            // Add active class to clicked tab button if event exists
+            if (event && event.target) {
+                event.target.classList.add('active');
+            } else {
+                // If no event, find and activate the tab button by data-tab attribute
+                const tabButtons = document.querySelectorAll('.tab-button');
+                tabButtons.forEach(btn => {
+                    if (btn.getAttribute('onclick')?.includes(tabName)) {
+                        btn.classList.add('active');
+                    }
+                });
+            }
+        }
+
+        // Load configuration on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadSystemStatus();
+            loadConfig();
+
+            // Check if LLM tab is active and load model manager
+            if (document.getElementById('llm-tab').classList.contains('active')) {
+                loadModelManager();
+            }
+        });
+
+        async function loadSystemStatus() {
+            try {
+                const response = await fetch('/v1/health');
+                const data = await response.json();
+
+                // Update status indicators - API returns llm_service, embedding_service, database
+                updateStatus('llm', data.components?.llm_service?.status || 'error', data.components?.llm_service?.message || 'Nicht erreichbar');
+                updateStatus('embedding', data.components?.embedding_service?.status || 'error', data.components?.embedding_service?.message || 'Nicht erreichbar');
+                updateStatus('database', data.components?.database?.status || 'error', data.components?.database?.message || 'Nicht erreichbar');
+
+                // Dimension status - combine from multiple sources if available
+                if (data.components?.database?.status === 'ok') {
+                    updateStatus('dimension', 'ok', 'Konfiguriert');
+                } else {
+                    updateStatus('dimension', 'error', 'Unbekannt');
+                }
+            } catch (error) {
+                console.error('Error loading system status:', error);
+                updateStatus('llm', 'error', 'Fehler beim Laden');
+                updateStatus('embedding', 'error', 'Fehler beim Laden');
+                updateStatus('database', 'error', 'Fehler beim Laden');
+                updateStatus('dimension', 'error', 'Fehler beim Laden');
+            }
+        }
+
+        function updateStatus(component, status, message) {
+            const indicator = document.getElementById(component + '-status');
+            const text = document.getElementById(component + '-status-text');
+
+            indicator.className = 'status-indicator ' + status;
+            text.textContent = message;
+        }
+
+        async function loadConfig() {
+            try {
+                const response = await fetch('/v1/config');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                // API returns { success: true, config: {...} } - extract the nested config
+                const config = data.config || data;
+
+                // Store API key for authentication
+                loadedApiKey = config.api_key || 'dev_api_key_change_me_in_production';
+                debug.log('🔑 API Key loaded:', loadedApiKey ? '***' : 'none');
+
+                // Populate form fields with null-safety checks
+                const setInputValue = (id, value) => {
+                    const element = document.getElementById(id);
+                    if (element) element.value = value || '';
+                };
+
+                setInputValue('ollama-url', config.ollama_url);
+                setInputValue('llm-model', config.llm_model);
+                setInputValue('embedding-url', config.embedding_url || config.ollama_url);
+                setInputValue('embedding-model', config.embedding_model);
+                setInputValue('qdrant-host', config.qdrant_host);
+                setInputValue('qdrant-port', config.qdrant_port);
+                setInputValue('api-key', config.api_key);
+                setInputValue('tavily-api-key', config.tavily_api_key);
+                setInputValue('ha-url', config.ha_url);
+                setInputValue('ha-token', config.ha_token);
+                setInputValue('system-prompt', config.system_prompt);
+                setInputValue('audit-log-path', config.audit_log_path);
+
+                // Update overview with null-safety checks
+                const setTextContent = (id, value) => {
+                    const element = document.getElementById(id);
+                    if (element) element.textContent = value || '-';
+                };
+
+                setTextContent('current-llm-model', config.llm_model);
+                setTextContent('current-embedding-model', config.embedding_model);
+                setTextContent('current-qdrant-host', `${config.qdrant_host}:${config.qdrant_port}`);
+                setTextContent('current-collection', config.memory_collection);
+
+                // Update feature flags
+                if (config.features) {
+                    Object.entries(config.features).forEach(([key, value]) => {
+                        const checkbox = document.querySelector(`input[name="features"][value="${key}"]`);
+                        if (checkbox) checkbox.checked = value;
+                    });
+                }
+
+                // ✅ Check if URLs are the same and update checkbox
+                const ollamaUrl = config.ollama_url || '';
+                const embeddingUrl = config.embedding_url || '';
+                const sameUrlCheckbox = document.getElementById('same-url');
+                const embeddingUrlInput = document.getElementById('embedding-url');
+                if (sameUrlCheckbox && embeddingUrlInput && ollamaUrl && embeddingUrl && ollamaUrl === embeddingUrl) {
+                    sameUrlCheckbox.checked = true;
+                    embeddingUrlInput.disabled = true;
+                }
+            } catch (error) {
+                console.error('Error loading config:', error);
+                // Show user-friendly error message
+                const statusElements = ['llm-status-text', 'embedding-status-text', 'database-status-text'];
+                statusElements.forEach(id => {
+                    const element = document.getElementById(id);
+                    if (element) element.textContent = 'Fehler beim Laden';
+                });
+            }
+        }
+
+        // ✅ Same-URL Checkbox Logic
+        document.addEventListener('DOMContentLoaded', () => {
+            const ollamaUrlInput = document.getElementById('ollama-url');
+            const embeddingUrlInput = document.getElementById('embedding-url');
+            const sameUrlCheckbox = document.getElementById('same-url');
+
+            // When checkbox changes
+            sameUrlCheckbox.addEventListener('change', function() {
+                if (this.checked) {
+                    // Sync embedding URL with ollama URL
+                    embeddingUrlInput.value = ollamaUrlInput.value;
+                    embeddingUrlInput.disabled = true;
+                } else {
+                    // Allow manual editing
+                    embeddingUrlInput.disabled = false;
+                }
+            });
+
+            // When ollama URL changes and checkbox is checked
+            ollamaUrlInput.addEventListener('input', function() {
+                if (sameUrlCheckbox.checked) {
+                    embeddingUrlInput.value = this.value;
+                }
+            });
+        });
+
+        // Form submissions
+        document.getElementById('llm-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await saveConfig('llm-message');
+        });
+
+        document.getElementById('memory-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await saveConfig('memory-message');
+        });
+
+        document.getElementById('features-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await saveConfig('features-message');
+        });
+
+        document.getElementById('advanced-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await saveConfig('advanced-message');
+        });
+
+        document.getElementById('integrations-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await saveConfig('integrations-message');
+        });
+
+        async function saveConfig(messageId) {
+            const messageEl = document.getElementById(messageId);
+            if (!messageEl) {
+                console.error('Message element not found:', messageId);
+                return;
+            }
+
+            // Validate required fields
+            const requiredFields = [
+                { id: 'ollama-url', name: 'Ollama URL' },
+                { id: 'qdrant-host', name: 'Qdrant Host' },
+                { id: 'qdrant-port', name: 'Qdrant Port' }
+            ];
+
+            for (const field of requiredFields) {
+                const element = document.getElementById(field.id);
+                if (!element || !element.value.trim()) {
+                    messageEl.className = 'message error';
+                    messageEl.textContent = `❌ Pflichtfeld fehlt: ${field.name}`;
+                    return;
+                }
+            }
+
+            const config = {
+                ollama_url: document.getElementById('ollama-url').value,
+                llm_model: document.getElementById('llm-model').value,
+                embedding_url: document.getElementById('embedding-url').value,
+                embedding_model: document.getElementById('embedding-model').value,
+                qdrant_host: document.getElementById('qdrant-host').value,
+                qdrant_port: parseInt(document.getElementById('qdrant-port').value),
+                api_key: document.getElementById('api-key').value,
+                tavily_api_key: document.getElementById('tavily-api-key').value,
+                system_prompt: document.getElementById('system-prompt').value,
+                audit_log_path: document.getElementById('audit-log-path').value,
+                force_recreate_collection: document.getElementById('force-recreate').checked,
+                features: {}
+            };
+
+            // Add optional fields only if they have values
+            const haUrl = document.getElementById('ha-url')?.value?.trim();
+            const haToken = document.getElementById('ha-token')?.value?.trim();
+            if (haUrl) config.ha_url = haUrl;
+            if (haToken) config.ha_token = haToken;
+
+            // Validate port is a valid number
+            if (isNaN(config.qdrant_port) || config.qdrant_port <= 0 || config.qdrant_port > 65535) {
+                messageEl.className = 'message error';
+                messageEl.textContent = '❌ Ungültiger Port (1-65535)';
+                return;
+            }
+
+            // Collect feature flags
+            document.querySelectorAll('input[name="features"]').forEach(checkbox => {
+                config.features[checkbox.value] = checkbox.checked;
+            });
+
+            // Get current API key for authentication
+            // Use the loaded API key, not the form field (in case user is changing the API key)
+            const authApiKey = loadedApiKey || 'dev_api_key_change_me_in_production';
+            debug.log('🔐 Using API Key for auth: ***');
+
+            try {
+                const response = await fetch('/v1/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': authApiKey
+                    },
+                    body: JSON.stringify(config)
+                });
+
+                debug.log('📡 Response status:', response.status);
+
+                if (response.ok) {
+                    messageEl.className = 'message success';
+                    messageEl.textContent = '✅ Konfiguration erfolgreich gespeichert!';
+                    setTimeout(() => {
+                        messageEl.className = 'message';
+                    }, 3000);
+
+                    // Reload config and status
+                    loadConfig();
+                    loadSystemStatus();
+                } else {
+                    const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+                    console.error('❌ Server error:', errorData);
+                    throw new Error(`Server returned ${response.status}: ${errorData.detail || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('❌ Save config failed:', error);
+                messageEl.className = 'message error';
+                messageEl.textContent = '❌ Fehler beim Speichern: ' + error.message;
+            }
+        }
+
+        // ========== HOME ASSISTANT CONNECTION TEST ==========
+
+        async function testHAConnection() {
+            const statusEl = document.getElementById('ha-status-text');
+            if (!statusEl) {
+                console.error('HA status element not found');
+                return;
+            }
+
+            // Get values from form
+            const haUrl = document.getElementById('ha-url')?.value?.trim();
+            const haToken = document.getElementById('ha-token')?.value?.trim();
+
+            // Validate inputs
+            if (!haUrl) {
+                statusEl.innerHTML = '<span style="color: var(--error-color);">❌ Bitte Home Assistant URL eingeben</span>';
+                return;
+            }
+            if (!haToken) {
+                statusEl.innerHTML = '<span style="color: var(--error-color);">❌ Bitte Access Token eingeben</span>';
+                return;
+            }
+
+            // Show testing status
+            statusEl.innerHTML = '<span style="color: var(--warning-color);">⚙️ Teste Verbindung...</span>';
+
+            try {
+                // Use backend endpoint to test connection (avoids CSP issues)
+                const response = await fetch('/v1/config/test-ha', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        ha_url: haUrl,
+                        ha_token: haToken
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    const entityCount = result.entity_count || 0;
+                    let message = `✅ ${result.message}`;
+                    if (result.entities && result.entities.length > 0) {
+                        message += `<br><small>Beispiel-Entitäten: ${result.entities.map(e => e.entity_id).join(', ')}</small>`;
+                    }
+                    statusEl.innerHTML = `<span style="color: var(--success-color);">${message}</span>`;
+                } else {
+                    statusEl.innerHTML = `<span style="color: var(--error-color);">❌ ${result.error}</span>`;
+                }
+            } catch (error) {
+                console.error('HA connection test error:', error);
+                statusEl.innerHTML = `<span style="color: var(--error-color);">❌ Fehler: ${error.message}</span>`;
+            }
+        }
+
+        // ========== OLLAMA MODEL MANAGER FUNCTIONS ==========
+
+        let currentConfig = { llm_model: '', embedding_model: '' };
+        let installedModelsData = [];
+
+        // Initialize model manager when LLM tab is opened
+        const originalSwitchTab = switchTab;
+        switchTab = function(tabName, event) {
+            originalSwitchTab(tabName, event);
+            if (tabName === 'llm') {
+                setTimeout(() => {
+                    loadModelManager();
+                }, 100);
+            }
+        };
+
+        async function loadModelManager() {
+            // Load current config to know active models
+            try {
+                const configResp = await fetch('/v1/config');
+                const configData = await configResp.json();
+                currentConfig = configData.config || configData;
+            } catch (error) {
+                console.error('Error loading config:', error);
+            }
+
+            // Load both installed and recommended models
+            await Promise.all([
+                loadInstalledModels(),
+                loadRecommendedModels()
+            ]);
+        }
+
+        async function loadInstalledModels() {
+            const container = document.getElementById('installed-models');
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Lade installierte Modelle...</div>';
+
+            try {
+                const response = await fetch('/v1/models');
+                const data = await response.json();
+
+                if (data.success && data.models && data.models.length > 0) {
+                    installedModelsData = data.models;
+                    container.innerHTML = '';
+
+                    data.models.forEach(model => {
+                        const isActiveLLM = model.name === currentConfig.llm_model;
+                        const isActiveEmbedding = model.name === currentConfig.embedding_model;
+                        const isActive = isActiveLLM || isActiveEmbedding;
+
+                        const card = createInstalledModelCard(model, isActiveLLM, isActiveEmbedding);
+                        container.appendChild(card);
+                    });
+                } else {
+                    container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Keine Modelle installiert</div>';
+                }
+            } catch (error) {
+                console.error('Error loading installed models:', error);
+                container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--error-color);">Fehler beim Laden: ' + error.message + '</div>';
+            }
+        }
+
+        async function loadRecommendedModels() {
+            const container = document.getElementById('recommended-models');
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Lade Empfehlungen...</div>';
+
+            try {
+                const response = await fetch('/v1/models/recommended');
+                const data = await response.json();
+
+                if (data.success && data.models && data.models.length > 0) {
+                    container.innerHTML = '';
+
+                    data.models.forEach(model => {
+                        const isInstalled = installedModelsData.some(m => m.name === model.name);
+                        const card = createRecommendedModelCard(model, isInstalled);
+                        container.appendChild(card);
+                    });
+                } else {
+                    container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Keine Empfehlungen verfügbar</div>';
+                }
+            } catch (error) {
+                console.error('Error loading recommended models:', error);
+                container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--error-color);">Fehler beim Laden: ' + error.message + '</div>';
+            }
+        }
+
+        function createInstalledModelCard(model, isActiveLLM, isActiveEmbedding) {
+            const card = document.createElement('div');
+            card.className = 'model-card' + (isActiveLLM || isActiveEmbedding ? ' active-model' : '');
+
+            const badges = [];
+            if (isActiveLLM) badges.push('<span class="model-badge badge-active">🤖 Aktiv (LLM)</span>');
+            if (isActiveEmbedding) badges.push('<span class="model-badge badge-active">🔤 Aktiv (Embedding)</span>');
+
+            card.innerHTML = `
+                <div class="model-header">
+                    <div class="model-name">${model.name}</div>
+                    ${badges.length > 0 ? '<div>' + badges.join('') + '</div>' : ''}
+                </div>
+                <div class="model-meta">
+                    ${model.size ? `<div class="model-meta-item">📦 ${model.size}</div>` : ''}
+                    ${model.modified_at ? `<div class="model-meta-item">🕐 ${new Date(model.modified_at).toLocaleDateString('de-DE')}</div>` : ''}
+                </div>
+                <div class="model-actions">
+                    <button class="btn-small btn-delete" onclick="deleteModel('${model.name}')" ${isActiveLLM || isActiveEmbedding ? 'disabled title="Aktive Modelle können nicht gelöscht werden"' : ''}>
+                        🗑️ Löschen
+                    </button>
+                </div>
+            `;
+
+            return card;
+        }
+
+        function createRecommendedModelCard(model, isInstalled) {
+            const card = document.createElement('div');
+            card.className = 'model-card';
+            card.id = `model-${model.name.replace(/[^a-z0-9]/gi, '-')}`;
+
+            const badges = [];
+            if (model.tags && model.tags.includes('recommended')) {
+                badges.push('<span class="model-badge badge-recommended">⭐ Empfohlen</span>');
+            }
+            if (model.tags && model.tags.includes('required')) {
+                badges.push('<span class="model-badge badge-required">📌 Erforderlich</span>');
+            }
+            if (isInstalled) {
+                badges.push('<span class="model-badge" style="background: rgba(76, 175, 80, 0.2); color: var(--success-color);">✅ Installiert</span>');
+            }
+
+            const tagsList = model.tags ? model.tags
+                .filter(t => !['recommended', 'required'].includes(t))
+                .map(t => `<span class="model-tag">${t}</span>`)
+                .join('') : '';
+
+            card.innerHTML = `
+                <div class="model-header">
+                    <div class="model-name">${model.name}</div>
+                    ${badges.length > 0 ? '<div style="display: flex; gap: 6px; flex-wrap: wrap;">' + badges.join('') + '</div>' : ''}
+                </div>
+                <div class="model-description">${model.description}</div>
+                <div class="model-meta">
+                    <div class="model-meta-item">💼 ${model.use_case}</div>
+                    ${model.size ? `<div class="model-meta-item">📦 ${model.size}</div>` : ''}
+                    ${model.parameters ? `<div class="model-meta-item">⚙️ ${model.parameters}</div>` : ''}
+                </div>
+                ${tagsList ? `<div class="model-tags">${tagsList}</div>` : ''}
+                <div class="model-actions">
+                    <button class="btn-small btn-pull" onclick="pullModel('${model.name}')" ${isInstalled ? 'disabled' : ''}>
+                        ${isInstalled ? '✅ Installiert' : '📥 Herunterladen'}
+                    </button>
+                </div>
+                <div class="progress-container" id="progress-${model.name.replace(/[^a-z0-9]/gi, '-')}">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-text">
+                        <span class="progress-status">Vorbereitung...</span>
+                        <span class="progress-percent">0%</span>
+                    </div>
+                </div>
+            `;
+
+            return card;
+        }
+
+        async function pullModel(modelName) {
+            const progressContainer = document.getElementById(`progress-${modelName.replace(/[^a-z0-9]/gi, '-')}`);
+            const progressFill = progressContainer.querySelector('.progress-fill');
+            const progressStatus = progressContainer.querySelector('.progress-status');
+            const progressPercent = progressContainer.querySelector('.progress-percent');
+            const pullButton = event.target;
+
+            // Show progress container
+            progressContainer.classList.add('active');
+            pullButton.disabled = true;
+            pullButton.textContent = '⏳ Lädt...';
+
+            try {
+                // Use EventSource for SSE streaming
+                const eventSource = new EventSource(`/v1/models/pull?name=${encodeURIComponent(modelName)}`);
+
+                eventSource.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
+
+                        // Update progress based on Ollama response
+                        if (data.status === 'success') {
+                            progressFill.style.width = '100%';
+                            progressStatus.textContent = '✅ Download abgeschlossen!';
+                            progressPercent.textContent = '100%';
+                            pullButton.textContent = '✅ Installiert';
+
+                            // Reload models after 1 second
+                            setTimeout(() => {
+                                eventSource.close();
+                                loadModelManager();
+                            }, 1000);
+                        } else if (data.total && data.completed) {
+                            // Calculate progress percentage
+                            const percent = Math.round((data.completed / data.total) * 100);
+                            progressFill.style.width = percent + '%';
+                            progressPercent.textContent = percent + '%';
+                            progressStatus.textContent = data.status || 'Download läuft...';
+                        } else {
+                            progressStatus.textContent = data.status || 'Download läuft...';
+                        }
+                    } catch (err) {
+                        console.error('Error parsing SSE data:', err);
+                    }
+                };
+
+                eventSource.onerror = function(error) {
+                    console.error('SSE Error:', error);
+                    eventSource.close();
+                    progressStatus.textContent = '❌ Fehler beim Download';
+                    progressPercent.textContent = '';
+                    pullButton.disabled = false;
+                    pullButton.textContent = '📥 Erneut versuchen';
+
+                    setTimeout(() => {
+                        progressContainer.classList.remove('active');
+                    }, 3000);
+                };
+
+            } catch (error) {
+                console.error('Error pulling model:', error);
+                progressStatus.textContent = '❌ Fehler: ' + error.message;
+                progressPercent.textContent = '';
+                pullButton.disabled = false;
+                pullButton.textContent = '📥 Erneut versuchen';
+
+                setTimeout(() => {
+                    progressContainer.classList.remove('active');
+                }, 3000);
+            }
+        }
+
+        async function deleteModel(modelName) {
+            if (!confirm(`Möchten Sie das Modell "${modelName}" wirklich löschen?\n\nDiese Aktion kann nicht rückgängig gemacht werden.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/v1/models/${encodeURIComponent(modelName)}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Show success message
+                    alert(`✅ Modell "${modelName}" wurde erfolgreich gelöscht.`);
+
+                    // Reload models
+                    loadModelManager();
+                } else {
+                    throw new Error(data.message || 'Unknown error');
+                }
+            } catch (error) {
+                console.error('Error deleting model:', error);
+                alert(`❌ Fehler beim Löschen: ${error.message}`);
+            }
+        }
+    </script>
+
+    <!-- Auth and User Manager Scripts -->
+    <link rel="stylesheet" href="/frontend/css/auth.css">
+    <script defer src="/frontend/js/auth-manager.js"></script>
+    <script defer src="/frontend/js/user-manager.js"></script>
+    <script defer src="/frontend/components/user-profile-widget.js"></script>
+    <script>
+        // Initialize AuthManager and UserManager
+        window.authManager = new AuthManager();
+        window.userManager = new UserManager(authManager);
+
+        userManager.init().then(async () => {
+            console.log('✅ User initialized:', userManager.getUserId());
+            userManager.updateUIElements();
+
+            // Initialize profile widget and account cards
+            initializeProfileTab();
+
+            // Fetch and display user stats
+            try {
+                const stats = await userManager.fetchUserStats();
+
+                // Update user profile section
+                const createdAt = new Date(stats.created_at || Date.now());
+                document.getElementById('user-created-at').textContent =
+                    createdAt.toLocaleDateString('de-DE', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                    });
+
+                document.getElementById('user-message-count').textContent =
+                    stats.message_count || 0;
+            } catch (error) {
+                console.error('❌ Failed to fetch user stats:', error);
+            }
+        }).catch(error => {
+            console.error('❌ UserManager initialization failed:', error);
+            document.querySelector('.user-display-name').textContent = 'Fehler';
+        });
+
+        // Initialize profile tab with auth state
+        function initializeProfileTab() {
+            const accountManagementCard = document.getElementById('account-management-card');
+            const anonymousUserCard = document.getElementById('anonymous-user-card');
+
+            if (authManager.isLoggedIn()) {
+                // Show account management for registered users
+                accountManagementCard.style.display = 'block';
+                anonymousUserCard.style.display = 'none';
+
+                // Load user data
+                const userData = authManager.getUserData();
+                if (userData) {
+                    document.getElementById('account-email').textContent = userData.email || '-';
+                    document.getElementById('account-type').textContent = userData.is_verified ? 'Verifiziert' : 'Nicht verifiziert';
+                }
+
+                // Initialize full profile widget
+                if (!window.fullProfileWidget) {
+                    window.fullProfileWidget = new UserProfileWidget('full-profile-widget', authManager);
+                }
+            } else {
+                // Show registration prompt for anonymous users
+                accountManagementCard.style.display = 'none';
+                anonymousUserCard.style.display = 'block';
+
+                // Show basic user info
+                const container = document.getElementById('full-profile-widget');
+                container.innerHTML = `
+                    <div class="info-box">
+                        <h4>👤 Anonymer Benutzer</h4>
+                        <p>Du nutzt LexiAI als Gast. Registriere dich, um dein Profil und deine Gespräche dauerhaft zu speichern.</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Listen for auth state changes
+        window.addEventListener('auth-changed', () => {
+            initializeProfileTab();
+        });
+
+        // Handle hash navigation to profile tab
+        if (window.location.hash === '#profile') {
+            switchTab('profile');
+        }
+
+        // Password Change Modal Functions
+        function openPasswordChangeModal() {
+            document.getElementById('passwordChangeModal').style.display = 'flex';
+            document.getElementById('passwordChangeForm').reset();
+            const messageEl = document.getElementById('password-change-message');
+            messageEl.style.display = 'none';
+            messageEl.className = 'message';
+            messageEl.textContent = '';
+        }
+
+        function closePasswordChangeModal() {
+            document.getElementById('passwordChangeModal').style.display = 'none';
+            document.getElementById('passwordChangeForm').reset();
+        }
+
+        async function changePassword(event) {
+            event.preventDefault();
+
+            const currentPassword = document.getElementById('current-password').value;
+            const newPassword = document.getElementById('new-password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+            const messageEl = document.getElementById('password-change-message');
+
+            // Validate passwords match
+            if (newPassword !== confirmPassword) {
+                messageEl.className = 'message error';
+                messageEl.textContent = '❌ Passwörter stimmen nicht überein';
+                messageEl.style.display = 'block';
+                return;
+            }
+
+            // Validate password length
+            if (newPassword.length < 8) {
+                messageEl.className = 'message error';
+                messageEl.textContent = '❌ Passwort muss mindestens 8 Zeichen lang sein';
+                messageEl.style.display = 'block';
+                return;
+            }
+
+            // Show loading state
+            messageEl.className = 'message';
+            messageEl.textContent = '⏳ Passwort wird geändert...';
+            messageEl.style.display = 'block';
+
+            try {
+                // Use authManager to get token
+                if (!authManager || !authManager.isLoggedIn()) {
+                    throw new Error('Nicht angemeldet');
+                }
+
+                const token = authManager.getToken();
+
+                const response = await fetch('http://localhost:8000/v1/auth/change-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        old_password: currentPassword,
+                        new_password: newPassword
+                    })
+                });
+
+                // Check for 404 - endpoint not implemented yet
+                if (response.status === 404) {
+                    throw new Error('BACKEND_NOT_IMPLEMENTED');
+                }
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Fehler beim Ändern des Passworts');
+                }
+
+                // Success
+                messageEl.className = 'message success';
+                messageEl.textContent = '✅ Passwort erfolgreich geändert!';
+                messageEl.style.display = 'block';
+
+                // Close modal after 2 seconds
+                setTimeout(() => {
+                    closePasswordChangeModal();
+                }, 2000);
+
+            } catch (error) {
+                console.error('Password change error:', error);
+                messageEl.className = 'message error';
+
+                if (error.message === 'BACKEND_NOT_IMPLEMENTED') {
+                    messageEl.textContent = '❌ Passwort-Änderung noch nicht im Backend implementiert.\n\nDer Endpunkt /v1/auth/change-password muss noch erstellt werden.';
+                } else if (error.message.includes('Nicht angemeldet')) {
+                    messageEl.textContent = '❌ Bitte melden Sie sich erneut an';
+                } else if (error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
+                    messageEl.textContent = '❌ Verbindung zum Server fehlgeschlagen. Bitte prüfen Sie, ob der Backend-Server läuft.';
+                } else if (error.message.includes('Incorrect password') || error.message.includes('aktuelles Passwort')) {
+                    messageEl.textContent = '❌ Aktuelles Passwort ist falsch';
+                } else {
+                    messageEl.textContent = `❌ ${error.message}`;
+                }
+                messageEl.style.display = 'block';
+            }
+        }
+
+        // Close modal when clicking outside
+        document.addEventListener('click', function(event) {
+            const modal = document.getElementById('passwordChangeModal');
+            if (event.target === modal) {
+                closePasswordChangeModal();
+            }
+        });
+    </script>
+
+    <!-- Password Change Modal -->
+    <div id="passwordChangeModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>🔒 Passwort ändern</h2>
+                <button class="modal-close" onclick="closePasswordChangeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="passwordChangeForm" onsubmit="changePassword(event)">
+                    <div class="form-group">
+                        <label for="current-password">Aktuelles Passwort:</label>
+                        <input type="password" id="current-password" name="current_password" required
+                               placeholder="Aktuelles Passwort eingeben" autocomplete="current-password">
+                    </div>
+                    <div class="form-group">
+                        <label for="new-password">Neues Passwort:</label>
+                        <input type="password" id="new-password" name="new_password" required
+                               placeholder="Neues Passwort eingeben" autocomplete="new-password"
+                               minlength="8">
+                        <div class="form-hint">Mindestens 8 Zeichen</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="confirm-password">Passwort bestätigen:</label>
+                        <input type="password" id="confirm-password" name="confirm_password" required
+                               placeholder="Neues Passwort bestätigen" autocomplete="new-password"
+                               minlength="8">
+                    </div>
+                    <div id="password-change-message" class="message" style="display: none;"></div>
+                    <div class="modal-footer" style="margin-top: 20px; display: flex; gap: 12px; justify-content: flex-end;">
+                        <button type="button" class="btn btn-secondary" onclick="closePasswordChangeModal()">
+                            Abbrechen
+                        </button>
+                        <button type="submit" class="btn">
+                            💾 Passwort ändern
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation Script -->
+    <script defer src="/frontend/js/navigation_improved.js"></script>
+    <script defer src="/frontend/js/ha-validation.js"></script>
+    <script defer src="/frontend/js/auth-integration.js"></script>
+    <script defer src="/frontend/js/breadcrumbs.js"></script>
+    <script defer src="/frontend/js/search.js"></script>
+</body>
+</html>

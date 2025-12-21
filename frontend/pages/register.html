@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LexiAI - Registrierung</title>
+    <link rel="stylesheet" href="../css/auth.css">
+    <link rel="stylesheet" href="css/config.css">
+</head>
+<body class="auth-page">
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h1>🤖 LexiAI</h1>
+                <p class="subtitle">Erstelle dein Konto</p>
+            </div>
+
+            <form id="registerForm" class="auth-form">
+                <div class="form-group">
+                    <label for="fullName">Name (optional)</label>
+                    <input
+                        type="text"
+                        id="fullName"
+                        name="fullName"
+                        autocomplete="name"
+                        placeholder="Max Mustermann"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="email">E-Mail *</label>
+                    <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        required
+                        autocomplete="email"
+                        placeholder="deine@email.com"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Passwort *</label>
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        required
+                        autocomplete="new-password"
+                        placeholder="••••••••"
+                        minlength="8"
+                    >
+                    <small class="form-hint">Mindestens 8 Zeichen</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirmPassword">Passwort bestätigen *</label>
+                    <input
+                        type="password"
+                        id="confirmPassword"
+                        name="confirmPassword"
+                        required
+                        autocomplete="new-password"
+                        placeholder="••••••••"
+                    >
+                </div>
+
+                <div class="password-strength" id="passwordStrength" style="display: none;">
+                    <div class="strength-bar">
+                        <div class="strength-fill" id="strengthFill"></div>
+                    </div>
+                    <span class="strength-text" id="strengthText"></span>
+                </div>
+
+                <div class="form-group form-checkbox">
+                    <input type="checkbox" id="terms" name="terms" required>
+                    <label for="terms">
+                        Ich akzeptiere die <a href="#" target="_blank">Nutzungsbedingungen</a> und <a href="#" target="_blank">Datenschutzerklärung</a>
+                    </label>
+                </div>
+
+                <button type="submit" class="btn btn-primary" id="registerButton">
+                    <span class="btn-text">Registrieren</span>
+                    <span class="btn-loader" style="display: none;">
+                        <span class="spinner"></span> Registrierung läuft...
+                    </span>
+                </button>
+
+                <div id="errorMessage" class="error-message" style="display: none;"></div>
+            </form>
+
+            <div class="auth-footer">
+                <p>Bereits ein Konto? <a href="login.html">Anmelden</a></p>
+                <p class="anonymous-option">
+                    <a href="../chat_ui.html">Als Gast fortfahren</a>
+                </p>
+            </div>
+        </div>
+
+        <div class="auth-info">
+            <h2>🚀 Starte mit LexiAI</h2>
+            <ul>
+                <li>✓ Kostenlose Registrierung</li>
+                <li>✓ Keine Kreditkarte erforderlich</li>
+                <li>✓ Sofort einsatzbereit</li>
+                <li>✓ Deine Daten bleiben privat</li>
+            </ul>
+
+            <div class="feature-highlight">
+                <h3>💡 Was dich erwartet:</h3>
+                <p>LexiAI lernt von deinen Gesprächen und merkt sich wichtige Details über deine Interessen, Beruf und Fähigkeiten. Dadurch werden die Unterhaltungen mit jeder Interaktion personalisierter.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- CRITICAL: Load auth-manager.js WITHOUT defer for synchronous initialization -->
+    <script src="../js/auth-manager.js"></script>
+    <script>
+        const authManager = new AuthManager();
+
+        // Redirect if already logged in
+        if (authManager.isLoggedIn()) {
+            window.location.href = '../chat_ui.html';
+        }
+
+        const registerForm = document.getElementById('registerForm');
+        const registerButton = document.getElementById('registerButton');
+        const errorMessage = document.getElementById('errorMessage');
+        const btnText = registerButton.querySelector('.btn-text');
+        const btnLoader = registerButton.querySelector('.btn-loader');
+        const passwordInput = document.getElementById('password');
+        const confirmPasswordInput = document.getElementById('confirmPassword');
+        const passwordStrength = document.getElementById('passwordStrength');
+        const strengthFill = document.getElementById('strengthFill');
+        const strengthText = document.getElementById('strengthText');
+
+        // Password strength indicator
+        passwordInput.addEventListener('input', () => {
+            const password = passwordInput.value;
+            if (password.length === 0) {
+                passwordStrength.style.display = 'none';
+                return;
+            }
+
+            passwordStrength.style.display = 'block';
+            const strength = calculatePasswordStrength(password);
+
+            strengthFill.style.width = `${strength.percentage}%`;
+            strengthFill.className = `strength-fill strength-${strength.level}`;
+            strengthText.textContent = strength.text;
+        });
+
+        function calculatePasswordStrength(password) {
+            let score = 0;
+
+            // Length
+            if (password.length >= 8) score += 25;
+            if (password.length >= 12) score += 25;
+
+            // Character types
+            if (/[a-z]/.test(password)) score += 15;
+            if (/[A-Z]/.test(password)) score += 15;
+            if (/[0-9]/.test(password)) score += 10;
+            if (/[^a-zA-Z0-9]/.test(password)) score += 10;
+
+            let level, text;
+            if (score < 40) {
+                level = 'weak';
+                text = 'Schwach';
+            } else if (score < 70) {
+                level = 'medium';
+                text = 'Mittel';
+            } else {
+                level = 'strong';
+                text = 'Stark';
+            }
+
+            return { percentage: score, level, text };
+        }
+
+        // Password match validation
+        confirmPasswordInput.addEventListener('input', () => {
+            if (confirmPasswordInput.value && passwordInput.value !== confirmPasswordInput.value) {
+                confirmPasswordInput.setCustomValidity('Passwörter stimmen nicht überein');
+            } else {
+                confirmPasswordInput.setCustomValidity('');
+            }
+        });
+
+        registerForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const fullName = document.getElementById('fullName').value;
+            const email = document.getElementById('email').value;
+            const password = passwordInput.value;
+            const confirmPassword = confirmPasswordInput.value;
+
+            // Validate passwords match
+            if (password !== confirmPassword) {
+                errorMessage.textContent = 'Passwörter stimmen nicht überein';
+                errorMessage.style.display = 'block';
+                return;
+            }
+
+            // Show loading state
+            btnText.style.display = 'none';
+            btnLoader.style.display = 'inline-flex';
+            registerButton.disabled = true;
+            errorMessage.style.display = 'none';
+
+            try {
+                // Check if migrating from anonymous
+                const anonymousUserId = localStorage.getItem('lexi_user_id');
+
+                let result;
+                if (anonymousUserId && anonymousUserId.startsWith('anon_')) {
+                    // Migrate anonymous account
+                    result = await authManager.migrateAnonymous(email, password, anonymousUserId);
+                } else {
+                    // New registration
+                    result = await authManager.register(email, password, fullName || null);
+                }
+
+                if (result.success) {
+                    // Success - redirect to main app
+                    window.location.href = '../chat_ui.html';
+                } else {
+                    // Show error
+                    errorMessage.textContent = result.error || 'Registrierung fehlgeschlagen';
+                    errorMessage.style.display = 'block';
+                }
+            } catch (error) {
+                errorMessage.textContent = 'Netzwerkfehler. Bitte versuche es erneut.';
+                errorMessage.style.display = 'block';
+            } finally {
+                // Reset button state
+                btnText.style.display = 'inline';
+                btnLoader.style.display = 'none';
+                registerButton.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

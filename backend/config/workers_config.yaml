@@ -1,0 +1,114 @@
+# Qdrant Database Optimization Workers Configuration
+#
+# This file configures background workers that continuously optimize
+# the Qdrant vector database for performance, quality, and efficiency.
+
+# Global worker settings
+workers:
+  enabled: true
+
+  # Coordinator settings
+  coordinator:
+    max_concurrent_workers: 2  # Max workers running simultaneously
+    lock_timeout_minutes: 60   # Distributed lock timeout
+
+  # 1. Deduplication Worker
+  # Finds and merges duplicate/similar memories
+  deduplication:
+    enabled: true
+    similarity_threshold: 0.95  # Cosine similarity threshold (0.0-1.0)
+    batch_size: 1000           # Memories per batch
+    min_group_size: 2          # Minimum duplicates to merge
+    preserve_metadata_strategy: "merge"  # merge | newest | highest_relevance
+    schedule: "0 2 * * *"      # Daily at 2:00 AM (cron format)
+
+  # 2. Index Optimization Worker
+  # Automatically tunes HNSW parameters based on collection size
+  index_optimization:
+    enabled: true
+    min_sample_size: 1000      # Queries needed for valid A/B test
+    test_duration_hours: 24    # Duration of A/B testing
+    rollback_threshold: 0.05   # Rollback if performance drops > 5%
+    schedule: "0 3 * * 0"      # Weekly on Sunday at 3:00 AM
+
+  # 3. Relevance Reranking Worker
+  # Updates relevance scores based on usage patterns
+  relevance_reranking:
+    enabled: true
+    batch_size: 500            # Memories per batch
+    min_retrievals_for_stats: 3  # Min retrievals to use stats
+    usage_boost_per_use: 0.1   # Boost per successful use
+    max_usage_boost: 0.5       # Maximum usage boost
+    recency_boost_7d: 0.2      # Boost if used in last 7 days
+    recency_boost_30d: 0.1     # Boost if used in last 30 days
+    age_decay_rate: 0.01       # Decay rate per 30 days without use
+    schedule: "0 */6 * * *"    # Every 6 hours
+
+  # 4. Data Quality Worker
+  # Detects and repairs data integrity issues
+  data_quality:
+    enabled: true
+    batch_size: 1000           # Memories per batch
+    auto_repair: true          # Automatically repair fixable issues
+    quarantine_corrupted: true # Move unfixable issues to quarantine
+    quarantine_collection: "lexi_memory_quarantine"
+    schedule: "0 4 * * *"      # Daily at 4:00 AM
+
+    # Validation checks
+    checks:
+      embedding_validation: true
+      payload_validation: true
+      metadata_consistency: true
+
+  # 5. Collection Balancing Worker
+  # Implements HOT/WARM/COLD tiered storage
+  collection_balancing:
+    enabled: true
+
+    # Collection names
+    hot_collection: "lexi_memory"
+    warm_collection: "lexi_memory_warm"
+    cold_collection: "lexi_memory_cold"
+
+    # HOT tier criteria (fast, uncompressed)
+    hot_criteria:
+      max_age_days: 30
+      min_relevance: 0.5
+      min_retrieval_count: 10
+
+    # WARM tier criteria (binary quantization)
+    warm_criteria:
+      max_age_days: 90
+      min_relevance: 0.2
+
+    # COLD tier criteria (scalar quantization)
+    cold_criteria:
+      min_age_days: 90
+      max_relevance: 0.2
+      max_retrieval_count: 3
+
+    # Quantization settings
+    quantization:
+      enabled: true
+      warm_method: "binary"    # binary | scalar | disabled
+      cold_method: "scalar"    # binary | scalar | disabled
+      cold_bits: 8             # 8-bit scalar quantization
+
+    schedule: "0 1 * * *"      # Daily at 1:00 AM
+
+# Database settings
+database:
+  collection_name: "lexi_memory"
+  expected_dimension: 768  # Embedding dimension (nomic-embed-text)
+
+# Metrics & Monitoring
+monitoring:
+  prometheus_enabled: true
+  prometheus_port: 9090
+  health_check_endpoint: "/v1/workers/health"
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG | INFO | WARNING | ERROR
+  file: "logs/workers.log"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

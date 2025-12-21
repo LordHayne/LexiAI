@@ -1,0 +1,42 @@
+services:
+  xtts-server:
+    # Using pre-built XTTS API Server
+    image: daswer123/xtts-api-server:latest-cpu
+    container_name: lexi-xtts-server
+    ports:
+      - "8020:80"  # XTTS Server läuft auf Port 8020
+    volumes:
+      # Mount der Trainingsdatei
+      - ./lexi_voice_training.wav:/app/voices/lexi.wav:ro
+      # Model cache (für schnellere Starts)
+      - ./xtts_cache:/app/tts_models
+    environment:
+      # Performance-Einstellungen
+      - DEVICE=cpu  # cpu oder cuda
+      - NUM_THREADS=4
+      # Logging
+      - LOG_LEVEL=info
+    restart: unless-stopped
+    # Resource Limits
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s  # XTTS braucht Zeit zum Model-Download
+
+  # Optional: Nginx Reverse Proxy für bessere Integration
+  # nginx:
+  #   image: nginx:alpine
+  #   ports:
+  #     - "8020:80"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #   depends_on:
+  #     - xtts-server

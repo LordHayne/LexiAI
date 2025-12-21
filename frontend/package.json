@@ -1,0 +1,17 @@
+{
+  "name": "lexiai-frontend",
+  "version": "1.0.0",
+  "description": "LexiAI Frontend - JavaScript build tools",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "build:prod": "NODE_ENV=production node scripts/build.js",
+    "deploy": "npm run build && node scripts/deploy.js",
+    "watch": "node scripts/build.js --watch"
+  },
+  "devDependencies": {
+    "terser": "^5.31.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

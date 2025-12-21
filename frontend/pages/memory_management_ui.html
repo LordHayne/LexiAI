@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lexi - Memory Management</title>
+    <link rel="icon" type="image/x-icon" href="/frontend/pages/lexi_favicon.ico">
+
+    <!-- Zentrale CSS-Dateien -->
+    <link rel="stylesheet" href="/frontend/css/global.css">
+    <link rel="stylesheet" href="/frontend/css/navigation_improved.css">
+    <link rel="stylesheet" href="/frontend/css/breadcrumbs.css">
+    <link rel="stylesheet" href="/frontend/css/search.css">
+    <link rel="stylesheet" href="/frontend/css/modal-auth.css">
+
+    <style>
+        /* CSS Variables werden von global.css bereitgestellt */
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .nav-bar {
+            background: var(--card-bg);
+            padding: 15px 25px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid var(--border-color);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .nav-link {
+            color: var(--text-color);
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            min-width: 100px;
+            text-align: center;
+        }
+
+        .nav-link:hover {
+            background: var(--section-bg);
+            border-color: var(--primary-color);
+        }
+
+        .nav-link.active {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #7c4dff 0%, #9370ff 100%);
+            padding: 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .header h1 {
+            font-size: 32px;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 16px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+        }
+
+        .stat-number {
+            font-size: 36px;
+            font-weight: bold;
+            color: var(--primary-color);
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .action-section {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-color);
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-description {
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .action-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(124, 77, 255, 0.3);
+        }
+
+        .btn-success {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+        }
+
+        .btn-warning {
+            background: var(--warning-color);
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #f57c00;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+        }
+
+        .btn-danger {
+            background: var(--error-color);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #e53935;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
+        }
+
+        .action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top: 2px solid white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result-box {
+            background: var(--section-bg);
+            border-left: 4px solid var(--info-color);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .result-box.show {
+            display: block;
+        }
+
+        .result-box.success {
+            border-left-color: var(--success-color);
+        }
+
+        .result-box.error {
+            border-left-color: var(--error-color);
+        }
+
+        .result-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .result-content {
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .result-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .result-stat {
+            background: var(--card-bg);
+            padding: 10px;
+            border-radius: 6px;
+        }
+
+        .result-stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .result-stat-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 5px;
+        }
+
+        .heartbeat-status {
+            background: var(--section-bg);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .status-row:last-child {
+            border-bottom: none;
+        }
+
+        .status-label {
+            color: var(--text-secondary);
+        }
+
+        .status-value {
+            color: var(--text-color);
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="main-content" role="main">
+        <!-- Navigation -->
+        <div class="nav-wrapper">
+<nav class="nav-bar" role="navigation" aria-label="Hauptnavigation">
+
+                <!-- Brand -->
+                <a href="/" class="nav-brand" aria-label="Zurück zur Startseite">
+                    <span class="logo">🤖</span>
+                    <span>Lexi AI</span>
+                </a>
+
+                <!-- Mobile Hamburger Menu -->
+                <button class="hamburger-menu" id="hamburgerMenu" aria-label="Menü öffnen">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+
+                <!-- Navigation Links -->
+                <div class="nav-links" id="navLinks">
+                    <!-- Primäre Funktionen -->
+                    <div class="nav-group primary">
+                        <a href="/frontend/chat_ui.html" class="nav-link primary">
+                            <span>💬</span>
+                            <span>Chat</span>
+                        </a>
+                    </div>
+
+                    <!-- Intelligenz Dropdown -->
+                    <div class="nav-dropdown">
+                        <button class="nav-dropdown-toggle" aria-haspopup="true" aria-expanded="false">
+                            <span>🧠</span>
+                            <span>Intelligenz</span>
+                            <span class="dropdown-icon">▼</span>
+                        </button>
+                        <div class="nav-dropdown-menu" role="menu">
+                            <a href="/frontend/pages/memory_management_ui.html" class="nav-dropdown-item" role="menuitem">
+                                <span>🧠</span>
+                                <span>Memory</span>
+                            </a>
+                            <a href="/frontend/pages/patterns_ui.html" class="nav-dropdown-item" role="menuitem">
+                                <span>🔍</span>
+                                <span>Patterns</span>
+                            </a>
+                            <a href="/frontend/pages/knowledge_gaps_ui.html" class="nav-dropdown-item" role="menuitem">
+                                <span>💡</span>
+                                <span>Wissenslücken</span>
+                            </a>
+                            <a href="/frontend/pages/goals_ui.html" class="nav-dropdown-item" role="menuitem">
+                                <span>🎯</span>
+                                <span>Ziele</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Verwaltung -->
+                    <div class="nav-group secondary">
+                        <a href="/frontend/pages/metrics_dashboard.html" class="nav-link" title="Dashboard">
+                            <span>📊</span>
+                        </a>
+                        <a href="/frontend/pages/config_ui.html" class="nav-link" title="Einstellungen">
+                            <span>⚙️</span>
+                        </a>
+                    </div>
+
+                    <!-- User Authentication Section -->
+                    <div class="user-info-section" style="margin-left: auto; display: flex; align-items: center; gap: 12px;">
+                        <!-- Auth Buttons (Anonymous Users) -->
+                        <div class="auth-buttons" id="authButtonsAnonymous" style="display: none;">
+                            <button class="auth-button-guest" onclick="continueAsGuest()">
+                                Als Gast fortfahren
+                            </button>
+                            <button class="auth-button-login" onclick="openAuthModal('login')">
+                                Anmelden
+                            </button>
+                        </div>
+
+                        <!-- User Menu (Authenticated Users) -->
+                        <div class="user-menu-dropdown" id="userMenuDropdown" style="display: none;">
+                            <button class="user-menu-button" id="userMenuButton">
+                                <div class="user-menu-avatar" id="userAvatar">?</div>
+                                <span id="userMenuName">User</span>
+                                <span style="margin-left: 4px;">▼</span>
+                            </button>
+                            <div class="user-menu-content" id="userMenuContent">
+                                <div class="user-menu-header">
+                                    <div style="font-weight: 500;" id="userMenuHeaderName">User</div>
+                                    <div class="user-menu-email" id="userMenuEmail">email@example.com</div>
+                                </div>
+                                <div class="user-menu-items">
+                                    <button class="user-menu-item" onclick="window.location.href='/frontend/pages/config_ui.html'">
+                                        ⚙️ Einstellungen
+                                    </button>
+                                    <button class="user-menu-item" onclick="window.location.href='/frontend/pages/memory_management_ui.html'">
+                                        🧠 Meine Memories
+                                    </button>
+                                    <div class="user-menu-divider"></div>
+                                    <button class="user-menu-item danger" onclick="handleLogout()">
+                                        🚪 Logout
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            
+            </nav>
+        </div>
+
+        <!-- Header -->
+        <div class="header">
+            <h1>🧠 Memory Management</h1>
+            <p>Konsolidierung, Synthetisierung und Heartbeat-Service Steuerung</p>
+        </div>
+
+        <!-- Statistics -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number" id="totalMemories">-</div>
+                <div class="stat-label">Gesamt Memories</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="lastRun">-</div>
+                <div class="stat-label">Letzter Heartbeat Run</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="runCount">-</div>
+                <div class="stat-label">Run Count</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="heartbeatMode">-</div>
+                <div class="stat-label">Heartbeat Mode</div>
+            </div>
+        </div>
+
+        <!-- Heartbeat Status -->
+        <div class="action-section">
+            <div class="section-title">
+                📊 Heartbeat Service Status
+            </div>
+            <div class="heartbeat-status" id="heartbeatStatus">
+                <div class="status-row">
+                    <span class="status-label">Status:</span>
+                    <span class="status-value">Laden...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Consolidation -->
+        <div class="action-section">
+            <div class="section-title">
+                🔄 Memory Konsolidierung
+            </div>
+            <div class="section-description">
+                Kombiniert ähnliche Memories zu kompakteren Einträgen. Reduziert Redundanz und verbessert die Retrieval-Performance.
+                <br><strong>Hinweis:</strong> Die Konsolidierung kann über die Einstellungen gestartet werden.
+            </div>
+            <div class="button-group">
+                <button class="action-btn btn-success" onclick="triggerConsolidation(event)">
+                    <span>🔄</span>
+                    <span>Konsolidierung starten</span>
+                </button>
+                <button class="action-btn btn-warning" onclick="triggerAggressiveConsolidation(event)">
+                    <span>⚡</span>
+                    <span>Konsolidierung (aggressiv)</span>
+                </button>
+                <button class="action-btn btn-warning" onclick="triggerMetaConsolidation(event)">
+                    <span>🧠</span>
+                    <span>Meta-Konsolidierung</span>
+                </button>
+            </div>
+            <div class="result-box" id="consolidationResult"></div>
+        </div>
+
+        <!-- Memory Synthesis -->
+        <div class="action-section">
+            <div class="section-title">
+                ✨ Memory Synthetisierung
+            </div>
+            <div class="section-description">
+                Erstellt hochwertige synthetische Memories durch Zusammenführung von Informationen. Generiert Meta-Wissen aus bestehenden Einträgen.
+            </div>
+            <div class="button-group">
+                <button class="action-btn btn-success" onclick="triggerSynthesis(event)">
+                    <span>✨</span>
+                    <span>Synthetisierung starten</span>
+                </button>
+            </div>
+            <div class="result-box" id="synthesisResult"></div>
+        </div>
+
+        <!-- Deep Learning Mode -->
+        <div class="action-section">
+            <div class="section-title">
+                🧠 Deep Learning Mode (Vollständig)
+            </div>
+            <div class="section-description">
+                Führt alle intelligenten Memory-Operationen durch: Konsolidierung, Synthetisierung, Pattern-Erkennung, Knowledge Gap Detection und Goal Reminders.
+            </div>
+            <div class="button-group">
+                <button class="action-btn btn-warning" onclick="triggerDeepLearning(event)">
+                    <span>🧠</span>
+                    <span>Deep Learning starten</span>
+                </button>
+            </div>
+            <div class="result-box" id="deepLearningResult"></div>
+        </div>
+
+        <!-- Cleanup Old Memories -->
+        <div class="action-section">
+            <div class="section-title">
+                🗑️ Memory Cleanup
+            </div>
+            <div class="section-description">
+                Löscht alte, ungenutzte Memories (älter als 30 Tage und nie verwendet). <strong>Achtung:</strong> Diese Aktion kann nicht rückgängig gemacht werden!
+            </div>
+            <div class="button-group">
+                <button class="action-btn btn-danger" onclick="triggerCleanup(event)">
+                    <span>🗑️</span>
+                    <span>Cleanup starten</span>
+                </button>
+            </div>
+            <div class="result-box" id="cleanupResult"></div>
+        </div>
+    </div>
+
+    <script>
+        // Load status on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadHeartbeatStatus();
+            // Refresh status every 10 seconds
+            setInterval(loadHeartbeatStatus, 10000);
+        });
+
+        async function loadHeartbeatStatus() {
+            try {
+                const response = await fetch('/v1/debug/heartbeat/status');
+                if (!response.ok) throw new Error('Failed to load heartbeat status');
+
+                const data = await response.json();
+                updateStatistics(data);
+                updateHeartbeatStatus(data);
+            } catch (error) {
+                console.error('Error loading heartbeat status:', error);
+            }
+        }
+
+        function updateStatistics(data) {
+            document.getElementById('totalMemories').textContent = data.heartbeat.total_memories || 0;
+            document.getElementById('runCount').textContent = data.heartbeat.run_count || 0;
+            document.getElementById('heartbeatMode').textContent = data.heartbeat.mode || 'unknown';
+
+            const lastRun = data.heartbeat.last_run;
+            if (lastRun) {
+                const date = new Date(lastRun);
+                const now = new Date();
+                const diffMs = now - date;
+                const diffMins = Math.floor(diffMs / 60000);
+                document.getElementById('lastRun').textContent = diffMins < 60
+                    ? `vor ${diffMins}m`
+                    : `vor ${Math.floor(diffMins / 60)}h`;
+            } else {
+                document.getElementById('lastRun').textContent = 'Noch nie';
+            }
+        }
+
+        function updateHeartbeatStatus(data) {
+            const statusDiv = document.getElementById('heartbeatStatus');
+            const hb = data.heartbeat;
+
+            statusDiv.innerHTML = `
+                <div class="status-row">
+                    <span class="status-label">Letzter Run:</span>
+                    <span class="status-value">${hb.last_run ? new Date(hb.last_run).toLocaleString('de-DE') : 'Noch nie'}</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Letzte Konsolidierung:</span>
+                    <span class="status-value">${hb.last_consolidation ? new Date(hb.last_consolidation).toLocaleString('de-DE') : 'Noch nie'}</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Letzte Synthetisierung:</span>
+                    <span class="status-value">${hb.last_synthesis ? new Date(hb.last_synthesis).toLocaleString('de-DE') : 'Noch nie'}</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Mode:</span>
+                    <span class="status-value">${hb.mode}</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Total Runs:</span>
+                    <span class="status-value">${hb.run_count}</span>
+                </div>
+            `;
+        }
+
+        async function triggerConsolidation(event) {
+            await executeAction('consolidate', 'consolidationResult', 'Konsolidierung', event);
+        }
+
+        async function triggerAggressiveConsolidation(event) {
+            await executeAction('consolidate', 'consolidationResult', 'Konsolidierung', event, {
+                consolidation_threshold: 0.8,
+                consolidation_min_cluster_size: 2,
+                consolidation_allowed_tags: ["chat", "conversation"]
+            });
+        }
+
+        async function triggerMetaConsolidation(event) {
+            await executeAction('consolidate', 'consolidationResult', 'Konsolidierung', event, {
+                consolidation_threshold: 0.85,
+                consolidation_min_cluster_size: 2,
+                consolidation_allowed_tags: ["synthesized", "meta_knowledge"],
+                consolidation_allowed_sources: ["memory_synthesis"],
+                consolidation_require_meta: true
+            });
+        }
+
+        async function triggerSynthesis(event) {
+            await executeAction('synthesize', 'synthesisResult', 'Synthetisierung', event);
+        }
+
+        async function triggerDeepLearning(event) {
+            await executeAction('deep_learning', 'deepLearningResult', 'Deep Learning', event);
+        }
+
+        async function triggerCleanup(event) {
+            if (!confirm('Möchtest du wirklich alte Memories löschen? Diese Aktion kann nicht rückgängig gemacht werden!')) {
+                return;
+            }
+            await executeAction('cleanup', 'cleanupResult', 'Cleanup', event, {
+                max_age_days: 30,
+                min_relevance: 0.2,
+                unused_after_days: 30,
+                max_unused_relevance: 0.6
+            });
+        }
+
+        async function executeAction(action, resultId, actionName, event, extraPayload = {}) {
+            const resultBox = document.getElementById(resultId);
+            const button = event && event.target ? event.target.closest('button') : null;
+            if (!button) {
+                console.error(`No button found for action: ${action}`);
+                return;
+            }
+
+            // Disable button and show loading
+            button.disabled = true;
+            const originalContent = button.innerHTML;
+            button.innerHTML = '<span class="loading"></span><span>Läuft...</span>';
+
+            // Show loading result
+            resultBox.className = 'result-box show';
+            resultBox.innerHTML = `
+                <div class="result-title">
+                    <span class="loading"></span>
+                    <span>${actionName} läuft...</span>
+                </div>
+                <div class="result-content">Bitte warten, dies kann einige Sekunden dauern...</div>
+            `;
+
+            try {
+                const response = await fetch('/v1/debug/heartbeat/ui-trigger', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        force_deep_learning: action === 'deep_learning',
+                        mode: action,
+                        ...extraPayload
+                    })
+                });
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+
+                // Show success result
+                resultBox.className = 'result-box show success';
+                resultBox.innerHTML = `
+                    <div class="result-title">
+                        <span>✅</span>
+                        <span>${actionName} erfolgreich abgeschlossen</span>
+                    </div>
+                    <div class="result-content">${data.message || 'Operation erfolgreich durchgeführt.'}</div>
+                    <div class="result-stats">
+                        ${data.stats ? `
+                            <div class="result-stat">
+                                <div class="result-stat-value">${data.stats.consolidated || 0}</div>
+                                <div class="result-stat-label">Konsolidiert</div>
+                            </div>
+                            <div class="result-stat">
+                                <div class="result-stat-value">${data.stats.synthesized || 0}</div>
+                                <div class="result-stat-label">Synthetisiert</div>
+                            </div>
+                            <div class="result-stat">
+                                <div class="result-stat-value">${data.stats.deleted || 0}</div>
+                                <div class="result-stat-label">Gelöscht</div>
+                            </div>
+                            <div class="result-stat">
+                                <div class="result-stat-value">${data.stats.patterns_detected || 0}</div>
+                                <div class="result-stat-label">Patterns</div>
+                            </div>
+                            <div class="result-stat">
+                                <div class="result-stat-value">${data.stats.knowledge_gaps_found || 0}</div>
+                                <div class="result-stat-label">Knowledge Gaps</div>
+                            </div>
+                            <div class="result-stat">
+                                <div class="result-stat-value">${data.stats.memories_after || 0}</div>
+                                <div class="result-stat-label">Memories danach</div>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+
+                // Reload status
+                loadHeartbeatStatus();
+
+            } catch (error) {
+                console.error(`Error executing ${action}:`, error);
+                resultBox.className = 'result-box show error';
+                resultBox.innerHTML = `
+                    <div class="result-title">
+                        <span>❌</span>
+                        <span>Fehler bei ${actionName}</span>
+                    </div>
+                    <div class="result-content">${error.message}</div>
+                `;
+            } finally {
+                // Re-enable button
+                button.disabled = false;
+                button.innerHTML = originalContent;
+            }
+        }
+    </script>
+
+    <!-- Security: XSS Protection with DOMPurify -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+    <script defer src="/frontend/js/sanitize.js"></script>
+
+    <!-- Navigation Script -->
+    <script defer src="/frontend/js/navigation_improved.js"></script>
+    <!-- CRITICAL: Load auth-manager.js WITHOUT defer so it's available for inline script -->
+    <script src="/frontend/js/auth-manager.js"></script>
+    <script src="/frontend/js/user-manager.js"></script>
+    <script defer src="/frontend/js/auth-integration.js"></script>
+    <script defer src="/frontend/js/breadcrumbs.js"></script>
+    <script defer src="/frontend/js/search.js"></script>
+    <script>
+        // Initialize Auth and update UI
+        function updateAuthUI() {
+            const authButtonsAnonymous = document.getElementById('authButtonsAnonymous');
+            const userMenuDropdown = document.getElementById('userMenuDropdown');
+            const userAvatar = document.getElementById('userAvatar');
+            const userMenuName = document.getElementById('userMenuName');
+            const userMenuHeaderName = document.getElementById('userMenuHeaderName');
+            const userMenuEmail = document.getElementById('userMenuEmail');
+
+            if (window.authManager && window.authManager.isLoggedIn()) {
+                // Show user menu for logged-in users
+                if (authButtonsAnonymous) authButtonsAnonymous.style.display = 'none';
+                if (userMenuDropdown) userMenuDropdown.style.display = 'block';
+
+                const user = window.authManager.getUserData();
+                if (user && userAvatar && userMenuName && userMenuHeaderName && userMenuEmail) {
+                    const initial = user.email ? user.email.charAt(0).toUpperCase() : '?';
+                    userAvatar.textContent = initial;
+                    userMenuName.textContent = user.display_name || user.email.split('@')[0];
+                    userMenuHeaderName.textContent = user.display_name || user.email.split('@')[0];
+                    userMenuEmail.textContent = user.email;
+                }
+            } else {
+                // Show auth buttons for anonymous users
+                if (authButtonsAnonymous) authButtonsAnonymous.style.display = 'flex';
+                if (userMenuDropdown) userMenuDropdown.style.display = 'none';
+            }
+        }
+        // Handle logout
+        async function handleLogout() {
+            if (confirm('Möchtest du dich wirklich abmelden?')) {
+                await window.authManager.logout();
+                updateAuthUI();
+            }
+        }
+
+        // Continue as guest (dismiss auth prompt)
+        function continueAsGuest() {
+            closeAuthModal();
+            console.log('Continuing as guest user');
+        }
+
+        // Listen for auth state changes
+        window.addEventListener('auth-changed', () => {
+            updateAuthUI();
+        });
+
+
+        // Initialize UserManager and AuthManager when DOM is ready
+        if (window.authManager && window.userManager) {
+            // CRITICAL: Call updateAuthUI() immediately to show auth buttons
+            updateAuthUI();
+
+            userManager.init().then(() => {
+                console.log('✅ User initialized:', userManager.getUserId());
+                updateAuthUI();
+            }).catch(error => {
+                console.error('❌ UserManager initialization failed:', error);
+            });
+        }
+    </script>
+
+    <!-- Auth Modal -->
+    <div class="auth-modal" id="authModal">
+        <div class="auth-modal-content">
+            <button class="auth-modal-close" onclick="closeAuthModal()">×</button>
+
+            <!-- Tabs -->
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-tab="login" onclick="switchAuthTab('login')">
+                    Login
+                </button>
+                <button class="auth-tab" data-tab="register" onclick="switchAuthTab('register')">
+                    Registrieren
+                </button>
+            </div>
+
+            <!-- Login Form -->
+            <form class="auth-form active" id="loginForm" onsubmit="handleLogin(event)">
+                <div class="auth-form-error" id="loginError"></div>
+
+                <div class="auth-form-group">
+                    <label class="auth-form-label">E-Mail</label>
+                    <input type="email" class="auth-form-input" id="loginEmail" placeholder="deine@email.de" required>
+                </div>
+
+                <div class="auth-form-group">
+                    <label class="auth-form-label">Passwort</label>
+                    <input type="password" class="auth-form-input" id="loginPassword" placeholder="••••••••" required>
+                </div>
+
+                <button type="submit" class="auth-form-button" id="loginSubmitBtn">
+                    Anmelden
+                </button>
+
+                <div class="auth-divider">oder</div>
+
+                <button type="button" class="auth-guest-button" onclick="continueAsGuest()">
+                    Als Gast fortfahren
+                </button>
+            </form>
+
+            <!-- Register Form -->
+            <form class="auth-form" id="registerForm" onsubmit="handleRegister(event)">
+                <div class="auth-form-error" id="registerError"></div>
+                <div class="auth-form-success" id="registerSuccess"></div>
+
+                <div class="auth-form-group">
+                    <label class="auth-form-label">E-Mail</label>
+                    <input type="email" class="auth-form-input" id="registerEmail" placeholder="deine@email.de" required>
+                </div>
+
+                <div class="auth-form-group">
+                    <label class="auth-form-label">Passwort</label>
+                    <input type="password" class="auth-form-input" id="registerPassword" placeholder="Mindestens 8 Zeichen" required minlength="8">
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                        Min. 8 Zeichen, 1 Großbuchstabe, 1 Zahl
+                    </div>
+                </div>
+
+                <div class="auth-form-group">
+                    <label class="auth-form-label">Passwort bestätigen</label>
+                    <input type="password" class="auth-form-input" id="registerPasswordConfirm" placeholder="Passwort wiederholen" required minlength="8">
+                </div>
+
+                <button type="submit" class="auth-form-button" id="registerSubmitBtn">
+                    Registrieren
+                </button>
+            </form>
+        </div>
+    </div>
+
+</body>
+</html>

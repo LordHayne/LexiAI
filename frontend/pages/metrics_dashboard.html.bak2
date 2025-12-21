@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lexi - Performance Metrics</title>
+    <link rel="icon" type="image/x-icon" href="/frontend/pages/lexi_favicon.ico">
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --primary-color: #7c4dff;
+            --primary-hover: #9370ff;
+            --text-color: #e0e0e0;
+            --text-secondary: #9e9e9e;
+            --border-color: #333333;
+            --success-color: #4caf50;
+            --warning-color: #ff9800;
+            --error-color: #f44336;
+            --section-bg: #252525;
+            --input-bg: #2d2d2d;
+            --info-color: #2196f3;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Navigation Bar */
+        .nav-bar {
+            background: var(--card-bg);
+            padding: 15px 25px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid var(--border-color);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .nav-link {
+            color: var(--text-color);
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            min-width: 100px;
+            text-align: center;
+        }
+
+        .nav-link:hover {
+            background: var(--section-bg);
+            border-color: var(--primary-color);
+        }
+
+        .nav-link.active {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #7c4dff 0%, #9370ff 100%);
+            padding: 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-content h1 {
+            font-size: 32px;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 8px;
+        }
+
+        .header-content p {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 16px;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .refresh-indicator {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .refresh-dot {
+            width: 8px;
+            height: 8px;
+            background: #4caf50;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s;
+        }
+
+        .stat-card:hover {
+            border-color: var(--primary-color);
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(124, 77, 255, 0.2);
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .stat-icon {
+            font-size: 18px;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 600;
+            color: var(--text-color);
+            margin-bottom: 5px;
+        }
+
+        .stat-value.success {
+            color: var(--success-color);
+        }
+
+        .stat-value.warning {
+            color: var(--warning-color);
+        }
+
+        .stat-value.error {
+            color: var(--error-color);
+        }
+
+        .stat-value.info {
+            color: var(--info-color);
+        }
+
+        .stat-subtitle {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* Charts Section */
+        .charts-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .chart-card {
+            background: var(--card-bg);
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .chart-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        .time-selector {
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 6px 12px;
+            color: var(--text-color);
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        /* Progress Bars */
+        .progress-container {
+            margin: 15px 0;
+        }
+
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .progress-bar-bg {
+            background: var(--input-bg);
+            height: 12px;
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            border-radius: 6px;
+            transition: width 0.5s ease;
+            background: linear-gradient(90deg, var(--primary-color), var(--primary-hover));
+        }
+
+        .progress-bar-fill.success {
+            background: linear-gradient(90deg, #4caf50, #66bb6a);
+        }
+
+        .progress-bar-fill.warning {
+            background: linear-gradient(90deg, #ff9800, #ffa726);
+        }
+
+        .progress-bar-fill.error {
+            background: linear-gradient(90deg, #f44336, #ef5350);
+        }
+
+        /* Tables */
+        .table-card {
+            background: var(--card-bg);
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+
+        .table-header {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--text-color);
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table th {
+            background: var(--section-bg);
+            padding: 12px;
+            text-align: left;
+            font-size: 13px;
+            color: var(--text-secondary);
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 14px;
+        }
+
+        .table tr:hover {
+            background: var(--section-bg);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge.success {
+            background: rgba(76, 175, 80, 0.2);
+            color: var(--success-color);
+        }
+
+        .badge.warning {
+            background: rgba(255, 152, 0, 0.2);
+            color: var(--warning-color);
+        }
+
+        .badge.error {
+            background: rgba(244, 67, 54, 0.2);
+            color: var(--error-color);
+        }
+
+        .badge.info {
+            background: rgba(33, 150, 243, 0.2);
+            color: var(--info-color);
+        }
+
+        /* Loading State */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+
+        .spinner {
+            border: 3px solid var(--border-color);
+            border-top: 3px solid var(--primary-color);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .charts-section {
+                grid-template-columns: 1fr;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .header-controls {
+                width: 100%;
+                justify-content: space-between;
+            }
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation -->
+        <div class="nav-bar">
+            <div class="nav-links">
+                <a href="/frontend/chat_ui.html" class="nav-link">🏠 Home</a>
+                <a href="/frontend/chat_ui.html" class="nav-link">🎤 Voicechat</a>
+                <a href="/frontend/pages/goals_ui.html" class="nav-link">🎯 Ziele</a>
+                <a href="/frontend/pages/patterns_ui.html" class="nav-link">🔍 Patterns</a>
+                <a href="/frontend/pages/knowledge_gaps_ui.html" class="nav-link">💡 Wissenslücken</a>
+                <a href="/frontend/pages/config_ui.html" class="nav-link">⚙️ Config</a>
+                <a href="/metrics" class="nav-link active">📊 Metriken</a>
+            </div>
+        </div>
+
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <h1>📊 Performance Metriken</h1>
+                <p>Echtzeit-Überwachung der Systemleistung</p>
+            </div>
+            <div class="header-controls">
+                <div class="refresh-indicator">
+                    <div class="refresh-dot"></div>
+                    <span>Live-Updates</span>
+                </div>
+                <button class="btn" onclick="refreshMetrics()">🔄 Aktualisieren</button>
+            </div>
+        </div>
+
+        <!-- Stats Overview -->
+        <div class="stats-grid" id="statsGrid">
+            <!-- Stats will be populated by JavaScript -->
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Lade Metriken...</p>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="charts-section">
+            <!-- Latency Chart -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3 class="chart-title">⏱️ Latenz-Metriken</h3>
+                    <select class="time-selector" id="timeWindow" onchange="updateTimeWindow()">
+                        <option value="">Alle Zeit</option>
+                        <option value="5">Letzte 5 Min</option>
+                        <option value="15" selected>Letzte 15 Min</option>
+                        <option value="60">Letzte Stunde</option>
+                    </select>
+                </div>
+                <div id="latencyMetrics">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Cache Performance -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3 class="chart-title">💾 Cache-Performance</h3>
+                </div>
+                <div id="cacheMetrics">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Component Status -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3 class="chart-title">🔧 Komponenten</h3>
+                </div>
+                <div id="componentMetrics">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Slow Queries Table -->
+        <div class="table-card">
+            <div class="table-header">🐌 Langsame Abfragen (>1000ms)</div>
+            <div id="slowQueriesTable">
+                <!-- Will be populated by JavaScript -->
+            </div>
+        </div>
+
+        <!-- Recent Errors Table -->
+        <div class="table-card">
+            <div class="table-header">⚠️ Letzte Fehler</div>
+            <div id="errorsTable">
+                <!-- Will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTimeWindow = 15; // Default: last 15 minutes
+
+        // Format number with commas
+        function formatNumber(num) {
+            return num.toLocaleString('de-DE');
+        }
+
+        // Format duration
+        function formatDuration(ms) {
+            if (ms < 1000) return `${ms.toFixed(0)}ms`;
+            return `${(ms / 1000).toFixed(2)}s`;
+        }
+
+        // Format timestamp
+        function formatTimestamp(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleTimeString('de-DE');
+        }
+
+        // Get color class based on percentage
+        function getPercentageClass(percentage) {
+            if (percentage >= 80) return 'success';
+            if (percentage >= 50) return 'warning';
+            return 'error';
+        }
+
+        // Update time window
+        function updateTimeWindow() {
+            const selector = document.getElementById('timeWindow');
+            currentTimeWindow = selector.value ? parseInt(selector.value) : null;
+            refreshMetrics();
+        }
+
+        // Fetch metrics from API
+        async function fetchMetrics() {
+            try {
+                let url = '/v1/metrics';
+                if (currentTimeWindow) {
+                    url += `?window_minutes=${currentTimeWindow}`;
+                }
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Failed to fetch metrics');
+                return await response.json();
+            } catch (error) {
+                console.error('Error fetching metrics:', error);
+                return null;
+            }
+        }
+
+        // Fetch component metrics
+        async function fetchComponentMetrics() {
+            try {
+                const response = await fetch('/v1/metrics/components');
+                if (!response.ok) throw new Error('Failed to fetch component metrics');
+                return await response.json();
+            } catch (error) {
+                console.error('Error fetching component metrics:', error);
+                return null;
+            }
+        }
+
+        // Render stats grid
+        function renderStatsGrid(data) {
+            const summary = data.summary;
+            const successRate = summary.total_queries > 0
+                ? ((summary.successful_queries / summary.total_queries) * 100).toFixed(1)
+                : 0;
+
+            const statsGrid = document.getElementById('statsGrid');
+            statsGrid.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-label">
+                        <span class="stat-icon">📈</span>
+                        Gesamt Abfragen
+                    </div>
+                    <div class="stat-value info">${formatNumber(summary.total_queries)}</div>
+                    <div class="stat-subtitle">${summary.queries_per_second.toFixed(3)} Abfragen/Sek</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label">
+                        <span class="stat-icon">✅</span>
+                        Erfolgsrate
+                    </div>
+                    <div class="stat-value ${getPercentageClass(successRate)}">${successRate}%</div>
+                    <div class="stat-subtitle">${formatNumber(summary.successful_queries)} erfolgreich</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label">
+                        <span class="stat-icon">⚡</span>
+                        Durchschn. Latenz
+                    </div>
+                    <div class="stat-value">${summary.avg_latency_ms.toFixed(0)}ms</div>
+                    <div class="stat-subtitle">P95: ${summary.p95_latency_ms.toFixed(0)}ms</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label">
+                        <span class="stat-icon">💾</span>
+                        Cache Hit-Rate
+                    </div>
+                    <div class="stat-value ${getPercentageClass(summary.cache_hit_rate)}">${summary.cache_hit_rate.toFixed(1)}%</div>
+                    <div class="stat-subtitle">Query-Cache</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label">
+                        <span class="stat-icon">🔍</span>
+                        Abfragetypen
+                    </div>
+                    <div class="stat-value">${formatNumber(summary.semantic_queries)}</div>
+                    <div class="stat-subtitle">Semantische Abfragen</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label">
+                        <span class="stat-icon">🐌</span>
+                        Langsame Abfragen
+                    </div>
+                    <div class="stat-value ${summary.slow_queries_count > 0 ? 'warning' : 'success'}">
+                        ${formatNumber(summary.slow_queries_count)}
+                    </div>
+                    <div class="stat-subtitle">Längste: ${summary.slowest_query_ms.toFixed(0)}ms</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label">
+                        <span class="stat-icon">❌</span>
+                        Fehlgeschlagene Abfragen
+                    </div>
+                    <div class="stat-value ${summary.failed_queries > 0 ? 'error' : 'success'}">
+                        ${formatNumber(summary.failed_queries)}
+                    </div>
+                    <div class="stat-subtitle">von ${formatNumber(summary.total_queries)} gesamt</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label">
+                        <span class="stat-icon">⏰</span>
+                        Uptime
+                    </div>
+                    <div class="stat-value success">${formatDuration(data.uptime_seconds * 1000)}</div>
+                    <div class="stat-subtitle">${formatNumber(data.history_size)} Einträge im Verlauf</div>
+                </div>
+            `;
+        }
+
+        // Render latency metrics
+        function renderLatencyMetrics(data) {
+            const summary = data.summary;
+            const container = document.getElementById('latencyMetrics');
+
+            container.innerHTML = `
+                <div class="progress-container">
+                    <div class="progress-label">
+                        <span>Durchschnitt</span>
+                        <span><strong>${summary.avg_latency_ms.toFixed(0)}ms</strong></span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" style="width: ${Math.min((summary.avg_latency_ms / 1000) * 100, 100)}%"></div>
+                    </div>
+                </div>
+
+                <div class="progress-container">
+                    <div class="progress-label">
+                        <span>P50 (Median)</span>
+                        <span><strong>${summary.p50_latency_ms.toFixed(0)}ms</strong></span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill success" style="width: ${Math.min((summary.p50_latency_ms / 1000) * 100, 100)}%"></div>
+                    </div>
+                </div>
+
+                <div class="progress-container">
+                    <div class="progress-label">
+                        <span>P95</span>
+                        <span><strong>${summary.p95_latency_ms.toFixed(0)}ms</strong></span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill warning" style="width: ${Math.min((summary.p95_latency_ms / 1000) * 100, 100)}%"></div>
+                    </div>
+                </div>
+
+                <div class="progress-container">
+                    <div class="progress-label">
+                        <span>P99</span>
+                        <span><strong>${summary.p99_latency_ms.toFixed(0)}ms</strong></span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill error" style="width: ${Math.min((summary.p99_latency_ms / 1000) * 100, 100)}%"></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Render cache metrics
+        async function renderCacheMetrics() {
+            const data = await fetchComponentMetrics();
+            if (!data) return;
+
+            const container = document.getElementById('cacheMetrics');
+
+            const embeddingHitRate = data.embeddings.cache_hit_rate || 0;
+            const memoryHitRate = data.memory.cache_hit_rate || 0;
+
+            container.innerHTML = `
+                <div class="progress-container">
+                    <div class="progress-label">
+                        <span>Embedding Cache</span>
+                        <span><strong>${embeddingHitRate.toFixed(1)}%</strong></span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill ${getPercentageClass(embeddingHitRate)}"
+                             style="width: ${embeddingHitRate}%"></div>
+                    </div>
+                    <div class="stat-subtitle" style="margin-top: 5px;">
+                        ${formatNumber(data.embeddings.cache_hits)} Hits /
+                        ${formatNumber(data.embeddings.cache_misses)} Misses
+                    </div>
+                </div>
+
+                <div class="progress-container">
+                    <div class="progress-label">
+                        <span>Memory Cache</span>
+                        <span><strong>${memoryHitRate.toFixed(1)}%</strong></span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill ${getPercentageClass(memoryHitRate)}"
+                             style="width: ${memoryHitRate}%"></div>
+                    </div>
+                    <div class="stat-subtitle" style="margin-top: 5px;">
+                        ${formatNumber(data.memory.cache_hits)} Hits /
+                        ${formatNumber(data.memory.cache_misses)} Misses
+                    </div>
+                </div>
+
+                <div class="progress-container">
+                    <div class="progress-label">
+                        <span>Embedding Durchschn. Latenz</span>
+                        <span><strong>${data.embeddings.avg_latency_ms.toFixed(0)}ms</strong></span>
+                    </div>
+                    <div class="stat-subtitle">
+                        ${formatNumber(data.embeddings.total_calls)} Aufrufe gesamt
+                    </div>
+                </div>
+
+                <div class="progress-container">
+                    <div class="progress-label">
+                        <span>Qdrant Durchschn. Latenz</span>
+                        <span><strong>${data.qdrant.avg_latency_ms.toFixed(0)}ms</strong></span>
+                    </div>
+                    <div class="stat-subtitle">
+                        ${formatNumber(data.qdrant.total_queries)} Abfragen /
+                        ${formatNumber(data.qdrant.errors)} Fehler (${data.qdrant.error_rate.toFixed(1)}%)
+                    </div>
+                </div>
+            `;
+        }
+
+        // Render component metrics
+        async function renderComponentMetrics() {
+            const data = await fetchComponentMetrics();
+            if (!data) return;
+
+            const container = document.getElementById('componentMetrics');
+
+            const embeddingStatus = data.embeddings.total_calls > 0 ? 'ok' : 'warning';
+            const qdrantStatus = data.qdrant.error_rate < 5 ? 'ok' : 'error';
+            const memoryStatus = data.memory.retrievals > 0 ? 'ok' : 'warning';
+
+            container.innerHTML = `
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--section-bg); border-radius: 8px;">
+                        <div>
+                            <div style="font-weight: 500;">Embeddings Service</div>
+                            <div style="font-size: 12px; color: var(--text-secondary);">
+                                ${formatNumber(data.embeddings.total_calls)} Aufrufe
+                            </div>
+                        </div>
+                        <div class="badge ${embeddingStatus === 'ok' ? 'success' : 'warning'}">
+                            ${embeddingStatus === 'ok' ? '✓ OK' : '⚠ Warning'}
+                        </div>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--section-bg); border-radius: 8px;">
+                        <div>
+                            <div style="font-weight: 500;">Qdrant Datenbank</div>
+                            <div style="font-size: 12px; color: var(--text-secondary);">
+                                ${formatNumber(data.qdrant.total_queries)} Abfragen
+                            </div>
+                        </div>
+                        <div class="badge ${qdrantStatus === 'ok' ? 'success' : 'error'}">
+                            ${qdrantStatus === 'ok' ? '✓ OK' : '✗ Errors'}
+                        </div>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--section-bg); border-radius: 8px;">
+                        <div>
+                            <div style="font-weight: 500;">Memory System</div>
+                            <div style="font-size: 12px; color: var(--text-secondary);">
+                                ${formatNumber(data.memory.stores)} Speicherungen /
+                                ${formatNumber(data.memory.retrievals)} Abrufe
+                            </div>
+                        </div>
+                        <div class="badge ${memoryStatus === 'ok' ? 'success' : 'warning'}">
+                            ${memoryStatus === 'ok' ? '✓ OK' : '⚠ Warning'}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Render slow queries table
+        function renderSlowQueries(data) {
+            const container = document.getElementById('slowQueriesTable');
+            const slowQueries = data.slow_queries || [];
+
+            if (slowQueries.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🎉</div>
+                        <p>Keine langsamen Abfragen!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Abfrage ID</th>
+                            <th>Dauer</th>
+                            <th>Zeitstempel</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${slowQueries.map(query => `
+                            <tr>
+                                <td><code>${query.query_id}</code></td>
+                                <td><span class="badge warning">${query.duration_ms.toFixed(0)}ms</span></td>
+                                <td>${formatTimestamp(query.timestamp)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        // Render errors table
+        function renderErrors(data) {
+            const container = document.getElementById('errorsTable');
+            const errors = data.recent_errors || [];
+
+            if (errors.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">✅</div>
+                        <p>Keine Fehler!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Abfrage ID</th>
+                            <th>Fehler</th>
+                            <th>Zeitstempel</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${errors.map(error => `
+                            <tr>
+                                <td><code>${error.query_id}</code></td>
+                                <td style="color: var(--error-color);">${error.error}</td>
+                                <td>${formatTimestamp(error.timestamp)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        // Refresh all metrics
+        async function refreshMetrics() {
+            const data = await fetchMetrics();
+            if (!data) {
+                document.getElementById('statsGrid').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚠️</div>
+                        <p>Fehler beim Laden der Metriken</p>
+                    </div>
+                `;
+                return;
+            }
+
+            renderStatsGrid(data);
+            renderLatencyMetrics(data);
+            await renderCacheMetrics();
+            await renderComponentMetrics();
+            renderSlowQueries(data);
+            renderErrors(data);
+        }
+
+        // Auto-refresh every 5 seconds
+        setInterval(refreshMetrics, 5000);
+
+        // Initial load
+        refreshMetrics();
+    </script>
+</body>
+</html>

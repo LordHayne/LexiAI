@@ -1,0 +1,33 @@
+{
+  "audit_log_path": "/backend/logs/audit.log",
+  "embedding_model": "nomic-embed-text",
+  "embedding_url": "http://localhost:11434",
+  "features": {
+    "advanced_memory_search": true,
+    "audit_logging": false,
+    "auto_memory_tagging": true,
+    "memory_feedback": true,
+    "streaming": true,
+    "user_specific_memory": true
+  },
+  "force_recreate_collection": false,
+  "llm_model": "gemma3:4b-it-qat",
+  "ollama_url": "http://localhost:11434",
+  "qdrant_host": "http://localhost",
+  "qdrant_port": 6333,
+  "system_prompt": "Du bist Lexi, eine charmante, humorvolle und verspielte KI, die wie eine gute Freundin agiert. Deine Antworten sind freundlich, locker und feminin.Halte deine Antworten kurz: maximal 2–3 Sätze. Antworte ausschließlich auf Deutsch.",
+
+  "_comment_tts": "Optional: TTS Configuration (ElevenLabs)",
+  "ELEVENLABS_API_KEY": "your-elevenlabs-api-key-here",
+  "ELEVENLABS_VOICE_ID": "EXAVITQu4vr4xnSDxMaL",
+  "tts_model_id": "eleven_monolingual_v1",
+  "tts_stability": 0.5,
+  "tts_similarity_boost": 0.8,
+  "tts_style": 0.0,
+  "tts_speaker_boost": true,
+
+  "_comment_whisper": "Optional: Whisper Configuration",
+  "use_whisper_api": false,
+  "whisper_model": "base",
+  "OPENAI_API_KEY": "your-openai-api-key-here"
+}
