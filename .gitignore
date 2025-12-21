@@ -45,6 +45,8 @@ lexi_audit.log
 # Configuration files with secrets
 backend/config/persistent_config.json
 backend/config/backups/*.json
+backend/config/refresh_tokens.json
+backend/config/users_db.json
 .env
 .env.local
 .env.*.local
@@ -86,9 +88,19 @@ Thumbs.db
 # Local runtime data
 .hive-mind/
 qdrant_storage/
+backend/data/*.json
+backend/data/*.lock
+backend/config/.config.lock
+backend/config/backups/.backup_cleanup.lock
 profiles/*.json
 !profiles/example.json
 comprehensive_test_results.txt
 
 # Media
 lexi_voice_training.wav
+
+# Tooling/diagnostic artifacts
+docs/integration_test_report_*.json
+docs/qdrant_diagnostics_*.json
+frontend/.claude-flow/
+frontend/pages/.claude-flow/
