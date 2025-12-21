@@ -87,6 +87,36 @@ else
     fi
 fi
 
+# Load environment defaults
+if [ -f ".env" ]; then
+    set -a
+    source .env
+    set +a
+fi
+
+LEXI_MEMORY_COLLECTION=${LEXI_MEMORY_COLLECTION:-lexi_memory}
+LEXI_MEMORY_DIMENSION=${LEXI_MEMORY_DIMENSION:-768}
+QDRANT_HOST=${QDRANT_HOST:-localhost}
+QDRANT_PORT=${QDRANT_PORT:-6333}
+OLLAMA_URL=${OLLAMA_URL:-http://localhost:11434}
+LLM_MODEL=${LLM_MODEL:-gemma3:4b}
+EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+
+if [[ "${QDRANT_HOST}" == http* ]]; then
+    QDRANT_URL="${QDRANT_HOST}:${QDRANT_PORT}"
+else
+    QDRANT_URL="http://${QDRANT_HOST}:${QDRANT_PORT}"
+fi
+
+# Ensure auth storage files exist
+if [ ! -f "backend/config/users_db.json" ]; then
+    echo "{}" > backend/config/users_db.json
+fi
+if [ ! -f "backend/config/refresh_tokens.json" ]; then
+    echo "{}" > backend/config/refresh_tokens.json
+fi
+chmod 600 backend/config/users_db.json backend/config/refresh_tokens.json 2>/dev/null || true
+
 # Test configuration
 echo ""
 echo "7️⃣ Testing configuration..."
@@ -99,27 +129,82 @@ print('✅ Configuration modules loaded successfully')
     exit 1
 }
 
-# Check if Ollama is running
+# Install/Start Ollama and download models
 echo ""
-echo "8️⃣ Checking external services..."
-if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ Ollama is running${NC}"
-else
-    echo -e "${YELLOW}⚠️  Ollama is not running or not accessible${NC}"
-    echo "   Please start Ollama: https://ollama.ai"
+echo "8️⃣ Setting up Ollama..."
+if ! command -v ollama > /dev/null 2>&1; then
+    if [ "$(uname)" = "Darwin" ]; then
+        if command -v brew > /dev/null 2>&1; then
+            brew install ollama
+        else
+            echo -e "${RED}❌ Homebrew not found. Install Ollama manually: https://ollama.com${NC}"
+            exit 1
+        fi
+    else
+        curl -fsSL https://ollama.com/install.sh | sh
+    fi
 fi
 
-# Check if Qdrant is running
-if curl -s http://localhost:6333/collections > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ Qdrant is running${NC}"
+if ! curl -s "${OLLAMA_URL}/api/tags" > /dev/null 2>&1; then
+    echo -e "${YELLOW}⚠️  Ollama not running, starting...${NC}"
+    ollama serve > /tmp/ollama.log 2>&1 &
+    sleep 2
+fi
+
+if curl -s "${OLLAMA_URL}/api/tags" > /dev/null 2>&1; then
+    echo -e "${GREEN}✅ Ollama is running${NC}"
+    if [ -n "${LLM_MODEL}" ]; then
+        echo "   Pulling LLM model in background: ${LLM_MODEL}"
+        ollama pull "${LLM_MODEL}" > /tmp/ollama_pull_llm.log 2>&1 &
+    fi
+    if [ -n "${EMBEDDING_MODEL}" ]; then
+        echo "   Pulling embedding model in background: ${EMBEDDING_MODEL}"
+        ollama pull "${EMBEDDING_MODEL}" > /tmp/ollama_pull_embed.log 2>&1 &
+    fi
 else
-    echo -e "${YELLOW}⚠️  Qdrant is not running or not accessible${NC}"
-    echo "   Please start Qdrant: docker run -p 6333:6333 qdrant/qdrant"
+    echo -e "${RED}❌ Ollama is not accessible at ${OLLAMA_URL}${NC}"
+    exit 1
+fi
+
+# Install/Start Qdrant via Docker
+echo ""
+echo "9️⃣ Setting up Qdrant..."
+mkdir -p qdrant_storage
+if ! command -v docker > /dev/null 2>&1; then
+    echo -e "${RED}❌ Docker not found. Install Docker Desktop to run Qdrant.${NC}"
+    exit 1
+fi
+if ! docker info > /dev/null 2>&1; then
+    echo -e "${RED}❌ Docker is not running. Please start Docker Desktop.${NC}"
+    exit 1
+fi
+
+if ! docker ps --format '{{.Names}}' | grep -qx 'lexi-qdrant'; then
+    if docker ps -a --format '{{.Names}}' | grep -qx 'lexi-qdrant'; then
+        docker start lexi-qdrant
+    else
+        docker run -d --name lexi-qdrant -p 6333:6333 \
+            -v "$(pwd)/qdrant_storage:/qdrant/storage" qdrant/qdrant
+    fi
+fi
+
+if ! curl -s "${QDRANT_URL}/collections" > /dev/null 2>&1; then
+    echo -e "${RED}❌ Qdrant is not accessible at ${QDRANT_HOST}:${QDRANT_PORT}${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✅ Qdrant is running${NC}"
+
+# Create collection if needed
+if ! curl -s "${QDRANT_URL}/collections/${LEXI_MEMORY_COLLECTION}" | grep -q '"status":"ok"'; then
+    echo "   Creating collection: ${LEXI_MEMORY_COLLECTION} (${LEXI_MEMORY_DIMENSION} dims)"
+    curl -s -X PUT "${QDRANT_URL}/collections/${LEXI_MEMORY_COLLECTION}" \
+        -H "Content-Type: application/json" \
+        -d "{\"vectors\":{\"size\":${LEXI_MEMORY_DIMENSION},\"distance\":\"Cosine\"}}"
 fi
 
 # Create necessary directories
 echo ""
-echo "9️⃣ Creating necessary directories..."
+echo "10️⃣ Creating necessary directories..."
 mkdir -p logs
 mkdir -p models
 mkdir -p backend/logs
@@ -131,20 +216,5 @@ echo "======================================"
 echo -e "${GREEN}🎉 Setup Complete!${NC}"
 echo "======================================"
 echo ""
-echo "Next steps:"
-echo ""
-echo "1. Activate virtual environment:"
-echo "   source .venv/bin/activate"
-echo ""
-echo "2. Start the middleware server:"
-echo "   python start_middleware.py"
-echo ""
-echo "   OR start the CLI:"
-echo "   python main.py"
-echo ""
-echo "3. Check if external services are running:"
-echo "   - Ollama: http://localhost:11434"
-echo "   - Qdrant: http://localhost:6333"
-echo ""
-echo "For more information, see SECURITY.md"
-echo ""
+echo "Starting middleware server..."
+python start_middleware.py
