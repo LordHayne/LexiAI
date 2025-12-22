@@ -201,6 +201,7 @@ async def update_config(request: Request):
         # Determine if we need to reinitialize components
         # ✅ Nur kritische Felder triggern Reinitialisierung (Performance-Optimierung)
         critical_reinit_triggers = {
+            config_request.llm_model,        # Neues LLM braucht neuen Client
             config_request.embedding_model,  # Braucht neue Embeddings
             config_request.qdrant_host,      # Neue DB-Verbindung nötig
             config_request.qdrant_port       # Neue DB-Verbindung nötig
@@ -281,7 +282,8 @@ async def update_config(request: Request):
         if need_reinit:
             try:
                 logger.info("Reinitializing components due to configuration changes...")
-                initialize_components(force_recreate=force_recreate)
+                from backend.core.component_cache import get_cached_components
+                get_cached_components(force_recreate=True)
                 reinit_success = True
                 logger.info("Components reinitialized successfully")
             except ConfigurationError as e:
