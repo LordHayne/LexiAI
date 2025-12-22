@@ -1087,9 +1087,10 @@
                         <div style="display: flex; gap: 8px; align-items: center;">
                             <input type="text" id="model-search-input" placeholder="z.B. gemma3:4b oder nomic-embed-text" style="flex: 1;">
                             <button type="button" class="btn btn-secondary" id="model-search-button">🔎 Suchen</button>
+                            <button type="button" class="btn btn-secondary" id="model-search-web-button">🌐 Web</button>
                             <button type="button" class="btn" id="model-pull-button">📥 Pull</button>
                         </div>
-                        <div class="form-hint">Suche filtert installierte/Setup-Modelle. Pull lädt exakt den eingegebenen Namen von Ollama.</div>
+                        <div class="form-hint">Suche filtert installierte/Setup-Modelle. "Web" oeffnet die Ollama Suche online. Pull laedt exakt den eingegebenen Namen von Ollama.</div>
                         <div class="progress-container" id="model-search-progress">
                             <div class="progress-bar">
                                 <div class="progress-fill" style="width: 0%"></div>
@@ -1543,6 +1544,7 @@
             const sameUrlCheckbox = document.getElementById('same-url');
             const searchInput = document.getElementById('model-search-input');
             const searchButton = document.getElementById('model-search-button');
+            const searchWebButton = document.getElementById('model-search-web-button');
             const pullButton = document.getElementById('model-pull-button');
             const searchProgress = document.getElementById('model-search-progress');
 
@@ -1576,6 +1578,15 @@
             }
             if (searchButton) {
                 searchButton.addEventListener('click', () => applyModelFilter(searchInput.value));
+            }
+            if (searchWebButton) {
+                searchWebButton.addEventListener('click', () => {
+                    const query = (searchInput && searchInput.value || '').trim();
+                    const url = query
+                        ? `https://ollama.com/search?q=${encodeURIComponent(query)}`
+                        : 'https://ollama.com/search';
+                    window.open(url, '_blank', 'noopener');
+                });
             }
             if (pullButton) {
                 pullButton.addEventListener('click', () => {
