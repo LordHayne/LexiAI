@@ -12,6 +12,7 @@ import logging
 import shutil
 import urllib.request
 import urllib.error
+import platform
 
 # Load .env file FIRST before any other imports
 from pathlib import Path
@@ -244,6 +245,10 @@ def start_xtts(logger):
     """Start XTTS via docker compose if needed."""
     if check_service("http://localhost:8020/health"):
         logger.info("XTTS already running.")
+        return True
+
+    if platform.machine() == "arm64" and not os.environ.get("LEXI_FORCE_XTTS"):
+        logger.warning("XTTS image is not available for arm64; skipping. Set LEXI_FORCE_XTTS=1 to force.")
         return True
 
     if not ensure_docker(logger):
