@@ -12,7 +12,7 @@
     const ROUTE_MAP = {
         '/': '/frontend/index.html',
         '/chat': '/frontend/chat_ui.html',
-        '/voice': '/frontend/chat_ui.html',
+        '/voice': '/frontend/chat_ui.html#voice-controls',
         '/memory': '/frontend/pages/memory_management_ui.html',
         '/patterns': '/frontend/pages/patterns_ui.html',
         '/gaps': '/frontend/pages/knowledge_gaps_ui.html',

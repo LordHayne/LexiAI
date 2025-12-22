@@ -14,22 +14,6 @@
     <link rel="stylesheet" href="/frontend/css/modal-auth.css">
 
     <style>
-        :root {
-            --bg-color: #121212;
-            --card-bg: #1e1e1e;
-            --primary-color: #7c4dff;
-            --primary-hover: #9370ff;
-            --text-color: #e0e0e0;
-            --text-secondary: #9e9e9e;
-            --border-color: #333333;
-            --success-color: #4caf50;
-            --warning-color: #ff9800;
-            --error-color: #f44336;
-            --section-bg: #252525;
-            --input-bg: #2d2d2d;
-            --info-color: #2196f3;
-        }
-
         * {
             margin: 0;
             padding: 0;
@@ -90,7 +74,7 @@
 
         /* Header */
         .header {
-            background: linear-gradient(135deg, #7c4dff 0%, #9370ff 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-hover) 100%);
             padding: 30px;
             border-radius: 16px;
             margin-bottom: 30px;
@@ -428,7 +412,7 @@
 <nav class="nav-bar" role="navigation" aria-label="Hauptnavigation">
 
                 <!-- Brand -->
-                <a href="/" class="nav-brand" aria-label="Zurück zur Startseite">
+                <a href="/frontend/index.html" class="nav-brand" aria-label="Zurück zur Startseite">
                     <span class="logo">🤖</span>
                     <span>Lexi AI</span>
                 </a>

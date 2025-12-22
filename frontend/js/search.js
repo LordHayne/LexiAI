@@ -16,7 +16,7 @@
             title: 'Dashboard',
             description: 'Übersicht und Schnellzugriff auf alle Features',
             keywords: ['home', 'start', 'übersicht', 'dashboard'],
-            url: '/',
+            url: '/frontend/index.html',
             icon: '🏠',
             category: 'Navigation'
         },
@@ -25,7 +25,7 @@
             title: 'Chat',
             description: 'Intelligente Konversationen mit semantischem Gedächtnis',
             keywords: ['chat', 'gespräch', 'konversation', 'nachricht', 'talk'],
-            url: '/frontend/chat_ui.html',
+            url: '/frontend/chat_ui.html#voice-controls',
             icon: '💬',
             category: 'Hauptfunktionen'
         },

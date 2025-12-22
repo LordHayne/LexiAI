@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="/frontend/css/breadcrumbs.css">
     <link rel="stylesheet" href="/frontend/css/search.css">
     <link rel="stylesheet" href="/frontend/css/modal-auth.css">
+    <link rel="stylesheet" href="/frontend/css/auth.css">
 
     <style>
         /* CSS Variables werden von global.css bereitgestellt */
@@ -736,7 +737,7 @@
         <div class="nav-wrapper">
 <nav class="nav-bar" role="navigation" aria-label="Hauptnavigation">
             <!-- Brand -->
-            <a href="/" class="nav-brand" aria-label="Zurück zur Startseite">
+            <a href="/frontend/index.html" class="nav-brand" aria-label="Zurück zur Startseite">
                 <span class="logo">🤖</span>
                 <span>Lexi AI</span>
             </a>
@@ -1173,7 +1174,7 @@
                         <div class="form-group">
                             <label for="tavily-api-key">Tavily API-Schlüssel:</label>
                             <input type="password" id="tavily-api-key" name="tavily_api_key" placeholder="Tavily API-Key für Web-Suche">
-                            <div class="form-hint">🌐 Ermöglicht Web-Suche für aktuelle Informationen. Kostenlosen Key unter <a href="https://tavily.com" target="_blank" style="color: var(--primary-color);">tavily.com</a> erhalten (1000 Suchen/Monat gratis)</div>
+                            <div class="form-hint">🌐 Ermöglicht Web-Suche für aktuelle Informationen. Kostenlosen Key unter <a href="https://tavily.com" target="_blank" rel="noopener noreferrer" style="color: var(--primary-color);">tavily.com</a> erhalten (1000 Suchen/Monat gratis)</div>
                         </div>
                     </div>
                 </div>
@@ -2115,7 +2116,6 @@
     <script defer src="/frontend/js/sanitize.js"></script>
 
     <!-- Auth and User Manager Scripts -->
-    <link rel="stylesheet" href="/frontend/css/auth.css">
     <!-- CRITICAL: Load auth-manager.js WITHOUT defer so it's available for inline script -->
     <script src="/frontend/js/auth-manager.js"></script>
     <script src="/frontend/js/user-manager.js"></script>

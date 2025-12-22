@@ -686,11 +686,12 @@ async def ui_chat(
     """
     import datetime
     import asyncio
+    import json
     from backend.api.v1.models.request_models import ChatRequest
     from backend.api.v1.models.response_models import ChatResponse, MemoryEntry as PydanticMemoryEntry
     from backend.api.v1.routes.chat import get_chat_components, validate_chat_request, ChatError, create_streaming_response, DEFAULT_TIMEOUT
     from backend.core.chat_processing_with_tools import process_chat_with_tools
-    from backend.core.chat_logic import process_chat_message_async
+    from backend.core.chat_logic import process_chat_message_async, process_chat_message_streaming
     from backend.config.feature_flags import FeatureFlags
     from fastapi.responses import StreamingResponse, JSONResponse
 
@@ -723,16 +724,73 @@ async def ui_chat(
                 if config_warning:
                     logger.warning(f"Processing with configuration warning: {config_warning}")
 
+                async def stream_with_history():
+                    collected_chunks = []
+                    turn_id = None
+
+                    try:
+                        metadata = {
+                            "type": "metadata",
+                            "timestamp": datetime.datetime.now().isoformat(),
+                            "streaming": True
+                        }
+                        yield f"data: {json.dumps(metadata)}\n\n"
+
+                        async for chunk in process_chat_message_streaming(
+                            chat_request.message,
+                            chat_client=chat_client,
+                            vectorstore=vectorstore,
+                            memory=memory,
+                            embeddings=embeddings,
+                            collect_feedback=FeatureFlags.is_enabled("memory_feedback"),
+                            user_id=chat_request.user_id
+                        ):
+                            if isinstance(chunk, dict):
+                                chunk_text = chunk.get("chunk")
+                                if chunk_text:
+                                    collected_chunks.append(chunk_text)
+                                if chunk.get("final_chunk"):
+                                    turn_id = chunk.get("turn_id")
+                                yield f"data: {json.dumps(chunk)}\n\n"
+                            elif isinstance(chunk, str):
+                                collected_chunks.append(chunk)
+                                chunk_data = {
+                                    "type": "content",
+                                    "content": chunk,
+                                    "timestamp": datetime.datetime.now().isoformat()
+                                }
+                                yield f"data: {json.dumps(chunk_data)}\n\n"
+                            else:
+                                logger.warning(f"Unexpected chunk type: {type(chunk)}")
+
+                        if chat_request.session_id:
+                            from backend.qdrant.chat_history_store import store_chat_turn
+                            await asyncio.to_thread(
+                                store_chat_turn,
+                                user_id=chat_request.user_id,
+                                session_id=chat_request.session_id,
+                                user_message=chat_request.message,
+                                assistant_message=" ".join(collected_chunks).strip(),
+                                turn_id=turn_id
+                            )
+
+                        completion = {
+                            "type": "complete",
+                            "timestamp": datetime.datetime.now().isoformat()
+                        }
+                        yield f"data: {json.dumps(completion)}\n\n"
+
+                    except Exception as e:
+                        logger.error(f"Error in streaming response: {str(e)}")
+                        error_data = {
+                            "type": "error",
+                            "error": str(e),
+                            "timestamp": datetime.datetime.now().isoformat()
+                        }
+                        yield f"data: {json.dumps(error_data)}\n\n"
+
                 return StreamingResponse(
-                    create_streaming_response(
-                        chat_request.message,
-                        chat_client=chat_client,
-                        vectorstore=vectorstore,
-                        memory=memory,
-                        embeddings=embeddings,
-                        collect_feedback=FeatureFlags.is_enabled("memory_feedback"),
-                        user_id=chat_request.user_id
-                    ),
+                    stream_with_history(),
                     media_type="text/event-stream",
                     headers={
                         "Cache-Control": "no-cache",
@@ -796,6 +854,21 @@ async def ui_chat(
             except asyncio.TimeoutError:
                 logger.error(f"Chat processing timed out after {DEFAULT_TIMEOUT} seconds")
                 raise ChatError("Request timed out. Please try again with a shorter message.", status_code=408)
+
+            # Store chat history in the background (no embeddings)
+            if chat_request.session_id:
+                from backend.qdrant.chat_history_store import store_chat_turn
+
+                background_tasks.add_task(
+                    store_chat_turn,
+                    user_id=chat_request.user_id,
+                    session_id=chat_request.session_id,
+                    user_message=chat_request.message,
+                    assistant_message=response_text,
+                    turn_id=turn_id,
+                )
+            else:
+                logger.debug("No session_id provided; skipping chat history storage")
 
             # Process memory entries safely - convert to Pydantic MemoryEntry
             processed_memory_entries = []
@@ -870,6 +943,53 @@ async def ui_chat(
                 "timestamp": datetime.datetime.now().isoformat(),
                 "processing_time": (datetime.datetime.now() - start_time).total_seconds()
             }
+        )
+
+
+@app.get("/ui/chat/sessions")
+async def ui_chat_sessions(
+    request: Request,
+    limit: int = 50,
+    auth: bool = Depends(verify_ui_auth)
+):
+    """
+    Return a list of chat sessions for the current user.
+    """
+    try:
+        user_id = getattr(request.state, "user_id", None) or request.query_params.get("user_id") or "default"
+        from backend.qdrant.chat_history_store import list_sessions
+
+        sessions = list_sessions(user_id=user_id, limit=limit)
+        return {"success": True, "sessions": sessions}
+    except Exception as e:
+        logger.error(f"Error getting chat sessions: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+
+@app.get("/ui/chat/history/{session_id}")
+async def ui_chat_history(
+    request: Request,
+    session_id: str,
+    limit: int = 500,
+    auth: bool = Depends(verify_ui_auth)
+):
+    """
+    Return messages for a specific session.
+    """
+    try:
+        user_id = getattr(request.state, "user_id", None) or request.query_params.get("user_id") or "default"
+        from backend.qdrant.chat_history_store import fetch_session_messages
+
+        messages = fetch_session_messages(user_id=user_id, session_id=session_id, limit=limit)
+        return {"success": True, "messages": messages}
+    except Exception as e:
+        logger.error(f"Error getting chat history: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
         )
 
 

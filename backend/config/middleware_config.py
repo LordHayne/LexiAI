@@ -78,6 +78,15 @@ class MiddlewareConfig:
     @property
     def MEMORY_COLLECTION(cls):
         return cls.get_memory_collection()
+
+    # Chat history configuration
+    @classmethod
+    def get_chat_history_collection(cls):
+        return os.environ.get("LEXI_CHAT_HISTORY_COLLECTION", "lexi_chat_history")
+
+    @property
+    def CHAT_HISTORY_COLLECTION(cls):
+        return cls.get_chat_history_collection()
     
     @classmethod
     def get_memory_dimension(cls):
