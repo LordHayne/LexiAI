@@ -381,6 +381,28 @@
     gap: 8px;
 }
 
+.profile-summary-list {
+    display: grid;
+    gap: 8px;
+}
+
+.profile-summary-item {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 0.9em;
+    color: #c4c4c4;
+}
+
+.profile-summary-label {
+    font-weight: 600;
+    color: #9aa4b2;
+}
+
+.profile-summary-value {
+    color: #e0e0e0;
+}
+
 .profile-tag {
     padding: 6px 12px;
     border-radius: 20px;

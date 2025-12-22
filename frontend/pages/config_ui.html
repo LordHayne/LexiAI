@@ -2041,6 +2041,15 @@
         function initializeProfileTab() {
             const accountManagementCard = document.getElementById('account-management-card');
             const anonymousUserCard = document.getElementById('anonymous-user-card');
+            const profileContainer = document.getElementById('full-profile-widget');
+
+            if (profileContainer) {
+                if (!window.fullProfileWidget) {
+                    window.fullProfileWidget = new UserProfileWidget('full-profile-widget', authManager, userManager);
+                } else {
+                    window.fullProfileWidget.refresh();
+                }
+            }
 
             if (authManager.isLoggedIn()) {
                 // Show account management for registered users
@@ -2054,23 +2063,10 @@
                     document.getElementById('account-type').textContent = userData.is_verified ? 'Verifiziert' : 'Nicht verifiziert';
                 }
 
-                // Initialize full profile widget
-                if (!window.fullProfileWidget) {
-                    window.fullProfileWidget = new UserProfileWidget('full-profile-widget', authManager);
-                }
             } else {
                 // Show registration prompt for anonymous users
                 accountManagementCard.style.display = 'none';
                 anonymousUserCard.style.display = 'block';
-
-                // Show basic user info
-                const container = document.getElementById('full-profile-widget');
-                container.innerHTML = `
-                    <div class="info-box">
-                        <h4>👤 Anonymer Benutzer</h4>
-                        <p>Du nutzt LexiAI als Gast. Registriere dich, um dein Profil und deine Gespräche dauerhaft zu speichern.</p>
-                    </div>
-                `;
             }
         }
 

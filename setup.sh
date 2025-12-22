@@ -14,21 +14,32 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Check Python version
-echo "1️⃣ Checking Python version..."
-if command -v python3 &> /dev/null; then
-    PYTHON_VERSION=$(python3 --version | cut -d' ' -f2)
-    echo -e "${GREEN}✅ Python $PYTHON_VERSION found${NC}"
-else
-    echo -e "${RED}❌ Python 3 not found. Please install Python 3.8+${NC}"
+# Check Python 3.11 on macOS (install via Homebrew if missing)
+echo "1️⃣ Checking Python 3.11..."
+if [ "$(uname)" != "Darwin" ]; then
+    echo -e "${RED}❌ This setup script currently targets macOS only${NC}"
     exit 1
 fi
+
+PYTHON_BIN="python3.11"
+if ! command -v "${PYTHON_BIN}" &> /dev/null; then
+    if command -v brew &> /dev/null; then
+        echo -e "${YELLOW}⚠️  Python 3.11 not found. Installing via Homebrew...${NC}"
+        brew install python@3.11
+    else
+        echo -e "${RED}❌ Homebrew not found. Install Python 3.11 manually.${NC}"
+        exit 1
+    fi
+fi
+
+PYTHON_VERSION=$("${PYTHON_BIN}" --version | cut -d' ' -f2)
+echo -e "${GREEN}✅ Python ${PYTHON_VERSION} found${NC}"
 
 # Create virtual environment if it doesn't exist
 if [ ! -d ".venv" ]; then
     echo ""
     echo "2️⃣ Creating virtual environment..."
-    python3 -m venv .venv
+    "${PYTHON_BIN}" -m venv .venv
     echo -e "${GREEN}✅ Virtual environment created${NC}"
 else
     echo ""
@@ -48,12 +59,20 @@ echo "4️⃣ Upgrading pip..."
 pip install --quiet --upgrade pip
 echo -e "${GREEN}✅ pip upgraded${NC}"
 
-# Install dependencies
+# Install dependencies (skip if requirements.txt unchanged)
 echo ""
 echo "5️⃣ Installing dependencies from requirements.txt..."
 echo -e "${YELLOW}   This may take a few minutes...${NC}"
-pip install --quiet -r requirements.txt
-echo -e "${GREEN}✅ All dependencies installed${NC}"
+REQ_FILE="requirements.txt"
+REQ_HASH_FILE=".requirements.hash"
+REQ_HASH="$(shasum -a 256 "${REQ_FILE}" | awk '{print $1}')"
+if [ -f "${REQ_HASH_FILE}" ] && [ "$(cat "${REQ_HASH_FILE}")" = "${REQ_HASH}" ]; then
+    echo -e "${GREEN}✅ requirements.txt unchanged, skipping install${NC}"
+else
+    pip install --quiet -r "${REQ_FILE}"
+    echo "${REQ_HASH}" > "${REQ_HASH_FILE}"
+    echo -e "${GREEN}✅ All dependencies installed${NC}"
+fi
 
 # Check if .env exists
 echo ""
@@ -120,7 +139,7 @@ chmod 600 backend/config/users_db.json backend/config/refresh_tokens.json 2>/dev
 # Test configuration
 echo ""
 echo "7️⃣ Testing configuration..."
-ENV=development LEXI_API_KEY_ENABLED=False python3 -c "
+ENV=development LEXI_API_KEY_ENABLED=False "${PYTHON_BIN}" -c "
 from backend.config.auth_config import SecurityConfig
 from backend.config.cors_config import CORSConfig
 print('✅ Configuration modules loaded successfully')
@@ -129,19 +148,15 @@ print('✅ Configuration modules loaded successfully')
     exit 1
 }
 
-# Install/Start Ollama and download models
+# Install/Start Ollama and download models (macOS)
 echo ""
 echo "8️⃣ Setting up Ollama..."
 if ! command -v ollama > /dev/null 2>&1; then
-    if [ "$(uname)" = "Darwin" ]; then
-        if command -v brew > /dev/null 2>&1; then
-            brew install ollama
-        else
-            echo -e "${RED}❌ Homebrew not found. Install Ollama manually: https://ollama.com${NC}"
-            exit 1
-        fi
+    if command -v brew > /dev/null 2>&1; then
+        brew install ollama
     else
-        curl -fsSL https://ollama.com/install.sh | sh
+        echo -e "${RED}❌ Homebrew not found. Install Ollama manually: https://ollama.com${NC}"
+        exit 1
     fi
 fi
 
@@ -166,9 +181,9 @@ else
     exit 1
 fi
 
-# Install/Start Qdrant via Docker
+# Install/Start Qdrant via Docker Compose
 echo ""
-echo "9️⃣ Setting up Qdrant..."
+echo "9️⃣ Setting up Qdrant (Docker Compose)..."
 mkdir -p qdrant_storage
 if ! command -v docker > /dev/null 2>&1; then
     echo -e "${RED}❌ Docker not found. Install Docker Desktop to run Qdrant.${NC}"
@@ -178,15 +193,12 @@ if ! docker info > /dev/null 2>&1; then
     echo -e "${RED}❌ Docker is not running. Please start Docker Desktop.${NC}"
     exit 1
 fi
-
-if ! docker ps --format '{{.Names}}' | grep -qx 'lexi-qdrant'; then
-    if docker ps -a --format '{{.Names}}' | grep -qx 'lexi-qdrant'; then
-        docker start lexi-qdrant
-    else
-        docker run -d --name lexi-qdrant -p 6333:6333 \
-            -v "$(pwd)/qdrant_storage:/qdrant/storage" qdrant/qdrant
-    fi
+if ! docker compose version > /dev/null 2>&1; then
+    echo -e "${RED}❌ docker compose not found. Update Docker Desktop.${NC}"
+    exit 1
 fi
+
+docker compose up -d qdrant
 
 if ! curl -s "${QDRANT_URL}/collections" > /dev/null 2>&1; then
     echo -e "${RED}❌ Qdrant is not accessible at ${QDRANT_HOST}:${QDRANT_PORT}${NC}"

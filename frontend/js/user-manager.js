@@ -52,6 +52,12 @@ class UserManager {
 
             if (authUser && authUser.user_id) {
                 this.setAuthenticatedUser(authUser);
+                try {
+                    const profileUser = await this.fetchUserProfile();
+                    this.syncAuthUserData(profileUser);
+                } catch (error) {
+                    console.warn('⚠️ Failed to sync authenticated user profile:', error);
+                }
             } else if (this.userId) {
                 // Verify user still exists on server
                 try {
@@ -169,6 +175,7 @@ class UserManager {
                     localStorage.setItem(this.STORAGE_KEY_DISPLAY_NAME, this.displayName);
                 }
 
+                this.syncAuthUserData(data.user);
                 return data.user;
             }
 
@@ -220,6 +227,7 @@ class UserManager {
                 // Update LocalStorage cache
                 localStorage.setItem(this.STORAGE_KEY_DISPLAY_NAME, this.displayName);
 
+                this.syncAuthUserData(data.user);
                 return data.user;
             }
 
@@ -400,6 +408,31 @@ class UserManager {
         idElements.forEach(el => {
             el.textContent = this.getUserId() || '-';
         });
+    }
+
+    /**
+     * Sync display name and profile data into AuthManager storage if logged in
+     * @param {Object} userData - Updated user data from /v1/users
+     */
+    syncAuthUserData(userData) {
+        if (!this.authManager || !this.authManager.isLoggedIn()) {
+            return;
+        }
+
+        const existing = this.authManager.getUserData();
+        if (!existing) {
+            return;
+        }
+
+        const merged = { ...existing };
+        const updateFields = ['display_name', 'profile', 'preferences', 'user_id', 'email', 'username'];
+        updateFields.forEach((field) => {
+            if (userData && userData[field] !== undefined && userData[field] !== null) {
+                merged[field] = userData[field];
+            }
+        });
+
+        this.authManager.storeAuthData(merged);
     }
 }
 

@@ -4,9 +4,10 @@
  */
 
 class UserProfileWidget {
-    constructor(containerId, authManager) {
+    constructor(containerId, authManager, userManager = null) {
         this.container = document.getElementById(containerId);
         this.authManager = authManager;
+        this.userManager = userManager || window.userManager || null;
         this.profile = null;
         this.isLoading = false;
 
@@ -20,9 +21,7 @@ class UserProfileWidget {
         });
 
         // Load profile if logged in
-        if (this.authManager.isLoggedIn()) {
-            this.loadProfile();
-        }
+        this.loadProfile();
     }
 
     /**
@@ -35,7 +34,7 @@ class UserProfileWidget {
         this.showLoading();
 
         try {
-            const response = await this.authManager.authenticatedFetch('/v1/users/me');
+            const response = await this.fetchProfile();
 
             if (!response.ok) {
                 throw new Error('Failed to load profile');
@@ -43,7 +42,7 @@ class UserProfileWidget {
 
             const data = await response.json();
             // API returns {user: {...}, message: "..."}
-            this.profile = data.user || data;
+            this.profile = this.normalizeProfile(data);
             this.render();
         } catch (error) {
             console.error('Error loading profile:', error);
@@ -108,14 +107,18 @@ class UserProfileWidget {
     render() {
         if (!this.container || !this.profile) return;
 
-        const user = this.authManager.getUserData();
-        const initials = this.getInitials(user?.email || user?.full_name);
+        const user = this.profile.user || this.authManager?.getUserData() || {};
+        const displayName = user.display_name || user.full_name || user.username || user.email || 'Benutzer';
+        const initials = this.getInitials(displayName || user.email);
 
-        const occupation = this.profile.occupation || 'Nicht angegeben';
-        const interests = this.profile.interests || [];
-        const skills = this.profile.skills || [];
-        const conversationCount = this.profile.conversation_count || 0;
-        const lastActive = this.profile.last_active ? new Date(this.profile.last_active) : null;
+        const learnedProfile = this.profile.learnedProfile || {};
+        const occupation = learnedProfile.user_profile_occupation || learnedProfile.occupation || 'Nicht angegeben';
+        const interests = this.normalizeList(learnedProfile.user_profile_interests || learnedProfile.interests);
+        const skills = this.normalizeList(learnedProfile.user_profile_skills || learnedProfile.skills);
+        const conversationCount = Number.isFinite(learnedProfile.conversation_count) ? learnedProfile.conversation_count : null;
+        const lastActive = user.last_seen ? new Date(user.last_seen) : null;
+        const profileSummary = this.renderProfileSummary(learnedProfile);
+        const preferencesSummary = this.renderPreferences(this.profile.preferences || {});
 
         // XSS-safe: User data (email, name, occupation, etc.) must be sanitized
         window.sanitize.setInnerHTML(this.container, `
@@ -125,10 +128,9 @@ class UserProfileWidget {
                         ${initials}
                     </div>
                     <div class="profile-info">
-                        <h3 class="profile-name">${user?.full_name || user?.email || 'Benutzer'}</h3>
+                        <h3 class="profile-name">${this.escapeHtml(displayName)}</h3>
                         <p class="profile-meta">
-                            ${conversationCount} Gespräche
-                            ${lastActive ? `• Zuletzt aktiv: ${this.formatDate(lastActive)}` : ''}
+                            ${this.buildMetaLine(conversationCount, lastActive)}
                         </p>
                     </div>
                     <button class="profile-edit-btn" onclick="window.fullProfileWidget.editProfile()" title="Profil bearbeiten">
@@ -140,6 +142,8 @@ class UserProfileWidget {
                     ${this.renderOccupation(occupation)}
                     ${this.renderInterests(interests)}
                     ${this.renderSkills(skills)}
+                    ${profileSummary}
+                    ${preferencesSummary}
                 </div>
 
                 <div class="profile-footer">
@@ -232,6 +236,161 @@ class UserProfileWidget {
         `;
     }
 
+    normalizeList(value) {
+        if (!value) {
+            return [];
+        }
+        if (Array.isArray(value)) {
+            return value;
+        }
+        if (typeof value === 'string') {
+            return [value];
+        }
+        return [String(value)];
+    }
+
+    renderProfileSummary(profile) {
+        const summaryItems = this.getProfileSummaryItems(profile);
+        if (summaryItems.length === 0) {
+            return `
+                <div class="profile-section empty">
+                    <h4>🧾 Zusammenfassung</h4>
+                    <p class="empty-state">Noch keine Zusammenfassung verfügbar.</p>
+                </div>
+            `;
+        }
+
+        const itemsHtml = summaryItems.map(({ label, value }) => `
+            <div class="profile-summary-item">
+                <span class="profile-summary-label">${this.escapeHtml(label)}:</span>
+                <span class="profile-summary-value">${this.escapeHtml(value)}</span>
+            </div>
+        `).join('');
+
+        return `
+            <div class="profile-section">
+                <h4>🧾 Zusammenfassung</h4>
+                <div class="profile-summary-list">
+                    ${itemsHtml}
+                </div>
+            </div>
+        `;
+    }
+
+    renderPreferences(preferences) {
+        const entries = this.getPreferenceItems(preferences);
+        if (entries.length === 0) {
+            return `
+                <div class="profile-section empty">
+                    <h4>🎛️ Präferenzen</h4>
+                    <p class="empty-state">Noch keine Präferenzen gespeichert.</p>
+                </div>
+            `;
+        }
+
+        const itemsHtml = entries.map(({ label, value }) => `
+            <div class="profile-summary-item">
+                <span class="profile-summary-label">${this.escapeHtml(label)}:</span>
+                <span class="profile-summary-value">${this.escapeHtml(value)}</span>
+            </div>
+        `).join('');
+
+        return `
+            <div class="profile-section">
+                <h4>🎛️ Präferenzen</h4>
+                <div class="profile-summary-list">
+                    ${itemsHtml}
+                </div>
+            </div>
+        `;
+    }
+
+    getProfileSummaryItems(profile) {
+        if (!profile || typeof profile !== 'object') {
+            return [];
+        }
+
+        const orderedKeys = [
+            ["user_profile_occupation", "Beruf/Tätigkeit"],
+            ["user_profile_interests", "Interessen"],
+            ["user_profile_preferences", "Präferenzen"],
+            ["user_profile_background", "Hintergrund"],
+            ["user_profile_goals", "Ziele"],
+            ["user_profile_location", "Wohnort"],
+            ["user_profile_languages", "Sprachen"],
+            ["user_profile_technical_level", "Technisches Niveau"],
+            ["user_profile_communication_style", "Kommunikationsstil"],
+            ["user_profile_topics", "Häufige Themen"]
+        ];
+
+        const items = [];
+        orderedKeys.forEach(([key, label]) => {
+            if (!Object.prototype.hasOwnProperty.call(profile, key)) {
+                return;
+            }
+            const value = this.formatProfileValue(profile[key]);
+            if (value) {
+                items.push({ label, value });
+            }
+        });
+
+        return items;
+    }
+
+    getPreferenceItems(preferences) {
+        if (!preferences || typeof preferences !== 'object') {
+            return [];
+        }
+
+        return Object.entries(preferences)
+            .filter(([, value]) => value !== null && value !== undefined && value !== '')
+            .map(([key, value]) => ({
+                label: this.formatPreferenceKey(key),
+                value: this.formatProfileValue(value)
+            }))
+            .filter((item) => item.value);
+    }
+
+    formatPreferenceKey(key) {
+        if (!key) {
+            return 'Einstellung';
+        }
+
+        const normalized = String(key).replace(/_/g, ' ').trim();
+        return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+    }
+
+    formatProfileValue(value) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+
+        if (Array.isArray(value)) {
+            return value.map((item) => String(item)).join(', ');
+        }
+
+        if (typeof value === 'object') {
+            try {
+                return JSON.stringify(value);
+            } catch (error) {
+                return String(value);
+            }
+        }
+
+        return String(value);
+    }
+
+    buildMetaLine(conversationCount, lastActive) {
+        const parts = [];
+        if (Number.isFinite(conversationCount)) {
+            parts.push(`${conversationCount} Gespräche`);
+        }
+        if (lastActive) {
+            parts.push(`Zuletzt aktiv: ${this.formatDate(lastActive)}`);
+        }
+        return parts.length > 0 ? parts.join(' • ') : 'Keine Aktivität verfügbar';
+    }
+
     /**
      * Get initials from name or email
      */
@@ -243,6 +402,39 @@ class UserProfileWidget {
             return (parts[0][0] + parts[1][0]).toUpperCase();
         }
         return text.substring(0, 2).toUpperCase();
+    }
+
+    async fetchProfile() {
+        if (this.userManager && this.userManager.isReady()) {
+            return this.userManager.authenticatedFetch('/v1/users/me');
+        }
+
+        const authUser = this.authManager?.getUserData();
+        const headers = {};
+        if (authUser?.user_id) {
+            headers['X-User-ID'] = authUser.user_id;
+        }
+        if (!headers['X-User-ID']) {
+            const cachedUserId = localStorage.getItem('lexi_user_id');
+            if (cachedUserId) {
+                headers['X-User-ID'] = cachedUserId;
+            }
+        }
+
+        if (this.authManager && this.authManager.isLoggedIn()) {
+            return this.authManager.authenticatedFetch('/v1/users/me', { headers });
+        }
+
+        return fetch('/v1/users/me', { headers });
+    }
+
+    normalizeProfile(data) {
+        const user = data?.user || data || {};
+        return {
+            user,
+            learnedProfile: user.profile || data?.profile || {},
+            preferences: user.preferences || {}
+        };
     }
 
     /**
