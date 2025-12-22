@@ -374,7 +374,11 @@ def main():
         # Wait a moment before opening browser
         def open_browser():
             time.sleep(3)  # Give the server a moment to start
-            url = f"http://{'localhost' if args.host == '0.0.0.0' else args.host}:{args.port}"
+            if args.host == "0.0.0.0":
+                open_host = "127.0.0.1"
+            else:
+                open_host = args.host
+            url = f"http://{open_host}:{args.port}"
             logger.info(f"Opening browser at {url}")
             webbrowser.open(url)
         
