@@ -179,6 +179,26 @@ async def update_current_user(request: Request, updates: UserUpdateRequest):
     if not update_dict:
         raise HTTPException(status_code=400, detail="No fields to update")
 
+    # Ensure user exists (auto-recover like /me)
+    user = user_store.get_user(user_id)
+    if user is None:
+        logger.warning(f"User {user_id} not found in database - recreating anonymous user")
+        now = datetime.now(timezone.utc).isoformat()
+        user = User(
+            user_id=user_id,
+            display_name="Anonymous User",
+            created_at=now,
+            last_seen=now,
+            tier=UserTier.ANONYMOUS,
+            preferences={},
+            email=None
+        )
+        try:
+            user_store.create_user(user)
+        except Exception as e:
+            logger.error(f"Failed to recreate user {user_id}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to recreate user")
+
     # Update user
     updated_user = user_store.update_user(user_id, update_dict)
 
