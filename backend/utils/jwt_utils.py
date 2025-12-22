@@ -20,7 +20,9 @@ class JWTConfig:
         """Get JWT secret from environment or generate temporary one"""
         secret = os.getenv("LEXI_JWT_SECRET")
         if not secret:
-            logger.warning("LEXI_JWT_SECRET nicht gesetzt! Verwende temporären Schlüssel (NICHT für Produktion!)")
+            jwt_enabled = os.getenv("LEXI_JWT_ENABLED", "False").lower() in ("true", "1", "yes")
+            if jwt_enabled:
+                logger.warning("LEXI_JWT_SECRET nicht gesetzt! Verwende temporären Schlüssel (NICHT für Produktion!)")
             secret = "TEMPORARY_DEV_SECRET_CHANGE_ME_IN_PRODUCTION"
         return secret
 

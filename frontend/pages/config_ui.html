@@ -1034,7 +1034,7 @@
                         </div>
                         <div class="form-group">
                             <label for="llm-model">LLM Modell:</label>
-                            <input type="text" id="llm-model" name="llm_model" placeholder="gemma3:4b-it-qat">
+                            <input type="text" id="llm-model" name="llm_model" placeholder="gemma3:4b" list="ollama-model-list">
                             <div class="form-hint">Name des zu verwendenden LLM-Modells</div>
                         </div>
                     </div>
@@ -1058,11 +1058,13 @@
                         </div>
                         <div class="form-group">
                             <label for="embedding-model">Embedding Modell:</label>
-                            <input type="text" id="embedding-model" name="embedding_model" placeholder="nomic-embed-text">
+                            <input type="text" id="embedding-model" name="embedding_model" placeholder="nomic-embed-text" list="ollama-model-list">
                             <div class="form-hint">Name des Embedding-Modells (z.B. nomic-embed-text für 768 Dimensionen)</div>
                         </div>
                     </div>
                 </div>
+
+                <datalist id="ollama-model-list"></datalist>
 
                 <div class="action-buttons">
                     <button type="submit" class="btn">💾 Speichern</button>
@@ -1079,6 +1081,25 @@
                         <h3>Ollama Model Manager</h3>
                     </div>
 
+                    <div class="form-group">
+                        <label for="model-search-input">Modell suchen (Ollama):</label>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" id="model-search-input" placeholder="z.B. gemma3:4b oder nomic-embed-text" style="flex: 1;">
+                            <button type="button" class="btn btn-secondary" id="model-search-button">🔎 Suchen</button>
+                            <button type="button" class="btn" id="model-pull-button">📥 Pull</button>
+                        </div>
+                        <div class="form-hint">Suche filtert installierte/Setup-Modelle. Pull lädt exakt den eingegebenen Namen von Ollama.</div>
+                        <div class="progress-container" id="model-search-progress">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 0%"></div>
+                            </div>
+                            <div class="progress-text">
+                                <span class="progress-status">Vorbereitung...</span>
+                                <span class="progress-percent">0%</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Installed Models -->
                     <div style="margin-bottom: 24px;">
                         <h4 style="color: var(--text-color); margin-bottom: 12px; font-size: 16px;">Installierte Modelle</h4>
@@ -1091,7 +1112,7 @@
 
                     <!-- Recommended Models -->
                     <div>
-                        <h4 style="color: var(--text-color); margin-bottom: 12px; font-size: 16px;">Empfohlene Modelle</h4>
+                        <h4 style="color: var(--text-color); margin-bottom: 12px; font-size: 16px;">Setup-Modelle (gemma3 + nomic)</h4>
                         <div id="recommended-models" style="display: grid; gap: 12px;">
                             <div style="text-align: center; padding: 20px; color: var(--text-secondary);">
                                 Lade Empfehlungen...
@@ -1519,6 +1540,10 @@
             const ollamaUrlInput = document.getElementById('ollama-url');
             const embeddingUrlInput = document.getElementById('embedding-url');
             const sameUrlCheckbox = document.getElementById('same-url');
+            const searchInput = document.getElementById('model-search-input');
+            const searchButton = document.getElementById('model-search-button');
+            const pullButton = document.getElementById('model-pull-button');
+            const searchProgress = document.getElementById('model-search-progress');
 
             // When checkbox changes
             sameUrlCheckbox.addEventListener('change', function() {
@@ -1538,6 +1563,29 @@
                     embeddingUrlInput.value = this.value;
                 }
             });
+
+            if (searchInput) {
+                searchInput.addEventListener('input', () => applyModelFilter(searchInput.value));
+                searchInput.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        applyModelFilter(searchInput.value);
+                    }
+                });
+            }
+            if (searchButton) {
+                searchButton.addEventListener('click', () => applyModelFilter(searchInput.value));
+            }
+            if (pullButton) {
+                pullButton.addEventListener('click', () => {
+                    const modelName = (searchInput && searchInput.value || '').trim();
+                    if (!modelName) {
+                        alert('Bitte einen Modellnamen eingeben.');
+                        return;
+                    }
+                    pullModel(modelName, pullButton, searchProgress);
+                });
+            }
         });
 
         // Form submissions
@@ -1722,6 +1770,23 @@
 
         let currentConfig = { llm_model: '', embedding_model: '' };
         let installedModelsData = [];
+        let modelSearchQuery = '';
+        const requiredModelsData = [
+            {
+                name: 'gemma3:4b',
+                description: 'Schnelles LLM fuer Lexi Chat und Tool-Calling.',
+                use_case: 'Chat/Tool-Calling',
+                size: '4B',
+                parameters: '4B',
+                tags: ['recommended', 'required']
+            },
+            {
+                name: 'nomic-embed-text',
+                description: 'Embedding Modell fuer Memory Search (768 Dimensionen).',
+                use_case: 'Embeddings/Vector Search',
+                tags: ['required']
+            }
+        ];
 
         // Initialize model manager when LLM tab is opened
         const originalSwitchTab = switchTab;
@@ -1761,48 +1826,91 @@
 
                 if (data.success && data.models && data.models.length > 0) {
                     installedModelsData = data.models;
-                    container.innerHTML = '';
-
-                    data.models.forEach(model => {
-                        const isActiveLLM = model.name === currentConfig.llm_model;
-                        const isActiveEmbedding = model.name === currentConfig.embedding_model;
-                        const isActive = isActiveLLM || isActiveEmbedding;
-
-                        const card = createInstalledModelCard(model, isActiveLLM, isActiveEmbedding);
-                        container.appendChild(card);
-                    });
+                    renderInstalledModels();
+                    updateModelDatalist(installedModelsData);
+                    renderRecommendedModels();
                 } else {
+                    installedModelsData = [];
+                    updateModelDatalist(installedModelsData);
+                    renderRecommendedModels();
                     container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Keine Modelle installiert</div>';
                 }
             } catch (error) {
                 console.error('Error loading installed models:', error);
+                installedModelsData = [];
+                updateModelDatalist(installedModelsData);
+                renderRecommendedModels();
                 container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--error-color);">Fehler beim Laden: ' + error.message + '</div>';
             }
         }
 
         async function loadRecommendedModels() {
             const container = document.getElementById('recommended-models');
-            container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Lade Empfehlungen...</div>';
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Lade Setup-Modelle...</div>';
+            renderRecommendedModels();
+        }
 
-            try {
-                const response = await fetch('/v1/models/recommended');
-                const data = await response.json();
+        function renderInstalledModels() {
+            const container = document.getElementById('installed-models');
+            container.innerHTML = '';
 
-                if (data.success && data.models && data.models.length > 0) {
-                    container.innerHTML = '';
-
-                    data.models.forEach(model => {
-                        const isInstalled = installedModelsData.some(m => m.name === model.name);
-                        const card = createRecommendedModelCard(model, isInstalled);
-                        container.appendChild(card);
-                    });
-                } else {
-                    container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Keine Empfehlungen verfügbar</div>';
-                }
-            } catch (error) {
-                console.error('Error loading recommended models:', error);
-                container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--error-color);">Fehler beim Laden: ' + error.message + '</div>';
+            if (!installedModelsData.length) {
+                container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Keine Modelle installiert</div>';
+                return;
             }
+
+            const models = filterModels(installedModelsData);
+            if (!models.length) {
+                container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Keine passenden Modelle gefunden</div>';
+                return;
+            }
+
+            models.forEach(model => {
+                const isActiveLLM = model.name === currentConfig.llm_model;
+                const isActiveEmbedding = model.name === currentConfig.embedding_model;
+                const card = createInstalledModelCard(model, isActiveLLM, isActiveEmbedding);
+                container.appendChild(card);
+            });
+        }
+
+        function renderRecommendedModels() {
+            const container = document.getElementById('recommended-models');
+            const models = filterModels(requiredModelsData);
+            container.innerHTML = '';
+
+            if (!models.length) {
+                container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Keine passenden Setup-Modelle gefunden</div>';
+                return;
+            }
+
+            models.forEach(model => {
+                const isInstalled = installedModelsData.some(m => m.name === model.name);
+                const card = createRecommendedModelCard(model, isInstalled);
+                container.appendChild(card);
+            });
+        }
+
+        function filterModels(models) {
+            if (!modelSearchQuery) return models;
+            return models.filter(model => (model.name || '').toLowerCase().includes(modelSearchQuery));
+        }
+
+        function applyModelFilter(query) {
+            modelSearchQuery = (query || '').trim().toLowerCase();
+            renderInstalledModels();
+            renderRecommendedModels();
+        }
+
+        function updateModelDatalist(models) {
+            const datalist = document.getElementById('ollama-model-list');
+            if (!datalist) return;
+
+            datalist.innerHTML = '';
+            models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.name;
+                datalist.appendChild(option);
+            });
         }
 
         function createInstalledModelCard(model, isActiveLLM, isActiveEmbedding) {
@@ -1866,7 +1974,7 @@
                 </div>
                 ${tagsList ? `<div class="model-tags">${tagsList}</div>` : ''}
                 <div class="model-actions">
-                    <button class="btn-small btn-pull" onclick="pullModel('${model.name}')" ${isInstalled ? 'disabled' : ''}>
+                    <button class="btn-small btn-pull" onclick="pullModel('${model.name}', this)" ${isInstalled ? 'disabled' : ''}>
                         ${isInstalled ? '✅ Installiert' : '📥 Herunterladen'}
                     </button>
                 </div>
@@ -1884,17 +1992,27 @@
             return card;
         }
 
-        async function pullModel(modelName) {
-            const progressContainer = document.getElementById(`progress-${modelName.replace(/[^a-z0-9]/gi, '-')}`);
+        async function pullModel(modelName, sourceButton, progressContainerOverride) {
+            const progressContainer = progressContainerOverride
+                || document.getElementById(`progress-${modelName.replace(/[^a-z0-9]/gi, '-')}`);
+            if (!progressContainer) {
+                alert('Kein Progress-Container gefunden. Bitte Seite neu laden.');
+                return;
+            }
             const progressFill = progressContainer.querySelector('.progress-fill');
             const progressStatus = progressContainer.querySelector('.progress-status');
             const progressPercent = progressContainer.querySelector('.progress-percent');
-            const pullButton = event.target;
+            const pullButton = sourceButton || (typeof event !== 'undefined' ? event.target : null);
 
             // Show progress container
             progressContainer.classList.add('active');
-            pullButton.disabled = true;
-            pullButton.textContent = '⏳ Lädt...';
+            if (progressFill) progressFill.style.width = '0%';
+            if (progressStatus) progressStatus.textContent = 'Vorbereitung...';
+            if (progressPercent) progressPercent.textContent = '0%';
+            if (pullButton) {
+                pullButton.disabled = true;
+                pullButton.textContent = '⏳ Lädt...';
+            }
 
             try {
                 // Use EventSource for SSE streaming
@@ -1913,7 +2031,7 @@
                             progressFill.style.width = '100%';
                             progressStatus.textContent = '✅ Download abgeschlossen!';
                             progressPercent.textContent = '100%';
-                            pullButton.textContent = '✅ Installiert';
+                            if (pullButton) pullButton.textContent = '✅ Installiert';
 
                             // Reload models after 1 second
                             setTimeout(() => {
@@ -1939,8 +2057,10 @@
                     eventSource.close();
                     progressStatus.textContent = '❌ Fehler beim Download';
                     progressPercent.textContent = '';
-                    pullButton.disabled = false;
-                    pullButton.textContent = '📥 Erneut versuchen';
+                    if (pullButton) {
+                        pullButton.disabled = false;
+                        pullButton.textContent = '📥 Erneut versuchen';
+                    }
 
                     setTimeout(() => {
                         progressContainer.classList.remove('active');
@@ -1951,8 +2071,10 @@
                 console.error('Error pulling model:', error);
                 progressStatus.textContent = '❌ Fehler: ' + error.message;
                 progressPercent.textContent = '';
-                pullButton.disabled = false;
-                pullButton.textContent = '📥 Erneut versuchen';
+                if (pullButton) {
+                    pullButton.disabled = false;
+                    pullButton.textContent = '📥 Erneut versuchen';
+                }
 
                 setTimeout(() => {
                     progressContainer.classList.remove('active');

@@ -19,7 +19,8 @@ from backend.models.user import (
     UserCreateRequest,
     UserUpdateRequest,
     UserResponse,
-    UserStatsResponse
+    UserStatsResponse,
+    UserTier
 )
 from backend.services.user_store import get_user_store, generate_anonymous_user
 from backend.api.middleware.user_middleware import get_user_id_from_request
@@ -95,7 +96,7 @@ async def initialize_user(
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user(request: Request):
+async def get_current_user(request: Request, response: Response):
     """
     Get current user profile.
 
@@ -116,12 +117,32 @@ async def get_current_user(request: Request):
     user = user_store.get_user(user_id)
 
     if user is None:
-        # This can happen if:
-        # 1. User was deleted
-        # 2. Cookie references non-existent user
-        # 3. Legacy 'default' user_id
-        logger.warning(f"User {user_id} not found in database")
-        raise HTTPException(status_code=404, detail="User not found")
+        # Auto-recover missing user ID by recreating anonymous user
+        logger.warning(f"User {user_id} not found in database - recreating anonymous user")
+        now = datetime.now(timezone.utc).isoformat()
+        user = User(
+            user_id=user_id,
+            display_name="Anonymous User",
+            created_at=now,
+            last_seen=now,
+            tier=UserTier.ANONYMOUS,
+            preferences={},
+            email=None
+        )
+        try:
+            user = user_store.create_user(user)
+        except Exception as e:
+            logger.error(f"Failed to recreate user {user_id}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to recreate user")
+
+        response.set_cookie(
+            key="lexi_user_id",
+            value=user.user_id,
+            httponly=False,
+            samesite="lax",
+            max_age=365 * 24 * 60 * 60,
+            path="/"
+        )
 
     return UserResponse(user=user)
 

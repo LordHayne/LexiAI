@@ -367,10 +367,13 @@ class QdrantMemoryInterface:
                 for i, entry in enumerate(entries, 1):
                     logger.info(f"  [{i}] Score: {entry.relevance:.3f} | Category: {entry.category or 'N/A'} | Content: '{entry.content[:60]}...'")
             else:
-                logger.warning(f"⚠️ DEBUG - NO MEMORIES FOUND! Check:")
-                logger.warning(f"  └─ Does user_id='{user_id}' have any memories?")
-                logger.warning(f"  └─ Is score_threshold={score_threshold} too strict?")
-                logger.warning(f"  └─ Query embedding successful: {len(vector)} dimensions")
+                log_fn = logger.warning
+                if score_threshold is not None and score_threshold >= 0.9:
+                    log_fn = logger.info
+                log_fn(f"⚠️ DEBUG - NO MEMORIES FOUND! Check:")
+                log_fn(f"  └─ Does user_id='{user_id}' have any memories?")
+                log_fn(f"  └─ Is score_threshold={score_threshold} too strict?")
+                log_fn(f"  └─ Query embedding successful: {len(vector)} dimensions")
 
             return entries
         except Exception as e:

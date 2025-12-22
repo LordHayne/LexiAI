@@ -348,6 +348,7 @@ def setup_static_files():
         ("frontend", "frontend"),
         ("static", "static")
     ]
+    optional_dirs = {"static"}
     
     for mount_path, directory in static_dirs:
         static_path = Path(directory)
@@ -355,7 +356,10 @@ def setup_static_files():
             app.mount(f"/{mount_path}", StaticFiles(directory=str(static_path)), name=mount_path)
             logger.info(f"Mounted static files: /{mount_path} -> {static_path}")
         else:
-            logger.warning(f"Static directory {static_path} not found")
+            if directory in optional_dirs:
+                logger.info(f"Static directory {static_path} not found (optional)")
+            else:
+                logger.warning(f"Static directory {static_path} not found")
 
 
 setup_static_files()

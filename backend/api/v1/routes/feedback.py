@@ -69,11 +69,9 @@ async def thumbs_up(request: ThumbsFeedbackRequest):
 
         if not turn:
             logger.warning(f"Turn nicht gefunden: {request.turn_id}")
-            return FeedbackResponse(
-                status="warning",
-                feedback_id="",
-                message=f"Turn {request.turn_id} nicht gefunden",
-                turn_found=False
+            raise HTTPException(
+                status_code=404,
+                detail=f"Turn {request.turn_id} nicht gefunden"
             )
 
         # Erstelle FeedbackEntry
@@ -127,11 +125,9 @@ async def thumbs_down(request: ThumbsFeedbackRequest):
 
         if not turn:
             logger.warning(f"Turn nicht gefunden: {request.turn_id}")
-            return FeedbackResponse(
-                status="warning",
-                feedback_id="",
-                message=f"Turn {request.turn_id} nicht gefunden",
-                turn_found=False
+            raise HTTPException(
+                status_code=404,
+                detail=f"Turn {request.turn_id} nicht gefunden"
             )
 
         # Erstelle FeedbackEntry
@@ -187,11 +183,9 @@ async def correction(request: CorrectionFeedbackRequest):
 
         if not turn:
             logger.warning(f"Turn nicht gefunden: {request.turn_id}")
-            return FeedbackResponse(
-                status="warning",
-                feedback_id="",
-                message=f"Turn {request.turn_id} nicht gefunden",
-                turn_found=False
+            raise HTTPException(
+                status_code=404,
+                detail=f"Turn {request.turn_id} nicht gefunden"
             )
 
         # Erstelle FeedbackEntry mit Korrektur

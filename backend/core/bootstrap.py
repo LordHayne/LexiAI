@@ -94,14 +94,7 @@ class ComponentInitializer:
         url = MiddlewareConfig.get_embedding_base_url()
         logger.info(f"Initializing embeddings: {model} at {url}")
 
-        # Check if Ollama is available before blocking call
-        import requests
-        ollama_available = False
-        try:
-            health_check = requests.get(f"{url.replace('/api', '')}/api/tags", timeout=3)
-            ollama_available = health_check.ok
-        except Exception:
-            pass
+        ollama_available = self._ensure_ollama_model(url, model, "embedding")
 
         try:
             embeddings = OllamaEmbeddings(base_url=url, model=model)
@@ -125,6 +118,38 @@ class ComponentInitializer:
     @staticmethod
     def _generate_pull_command(model: str) -> str:
         return f"curl -X POST http://localhost:11434/api/pull -d '{{\"model\": \"{model}\", \"stream\": false}}'"
+
+    def _ensure_ollama_model(self, url: str, model: str, label: str) -> bool:
+        import requests
+
+        base_url = url.replace("/api", "")
+        try:
+            tags_response = requests.get(f"{base_url}/api/tags", timeout=3)
+            if not tags_response.ok:
+                logger.warning(f"⚠️ Ollama not available at {base_url} - skipping {label} model check")
+                return False
+
+            models = tags_response.json().get("models", [])
+            if any(m.get("name") == model for m in models):
+                return True
+
+            logger.warning(f"Model '{model}' not found in Ollama. Pulling before startup...")
+            pull_response = requests.post(
+                f"{base_url}/api/pull",
+                json={"model": model, "stream": False},
+                timeout=600,
+            )
+            if not pull_response.ok:
+                logger.error(
+                    f"Failed to pull model '{model}' (status {pull_response.status_code}): {pull_response.text}"
+                )
+                return False
+
+            logger.info(f"✅ Model pulled successfully: {model}")
+            return True
+        except Exception as e:
+            logger.warning(f"⚠️ Could not verify/pull model '{model}': {e}")
+            return False
 
     def _init_vectorstore(self, embeddings: "OllamaEmbeddings", dimensions: int) -> Tuple[QdrantMemoryInterface, QdrantClient, Optional[str]]:
         host = self._normalize_qdrant_host()
@@ -288,6 +313,8 @@ class ComponentInitializer:
         logger.info(f"ChatOllama keep_alive set to: {keep_alive_duration}")
 
         try:
+            ollama_available = self._ensure_ollama_model(url, model, "LLM")
+
             # OPTIMIERT FÜR NATÜRLICHE ANTWORTEN (statt nur Speed)
             # Balance zwischen Qualität und Performance
             chat_client = ChatOllama(
@@ -301,16 +328,6 @@ class ComponentInitializer:
                 repeat_penalty=1.15,  # Leicht erhöht gegen Wiederholungen
                 keep_alive=keep_alive_duration  # Never unload model
             )
-
-            # OPTIONAL Warmup: Only if Ollama is available
-            # Server startet auch ohne Ollama - kann später über WebUI konfiguriert werden
-            import requests
-            ollama_available = False
-            try:
-                health_check = requests.get(f"{url.replace('/api', '')}/api/tags", timeout=3)
-                ollama_available = health_check.ok
-            except Exception:
-                pass
 
             if ollama_available:
                 logger.info("Warming up ChatOllama model...")
@@ -437,6 +454,10 @@ class ComponentInitializer:
         if not FeatureFlags.is_enabled("home_assistant"):
             logger.info("Home Assistant integration disabled (feature flag)")
             return None
+        if not MiddlewareConfig.get_ha_enabled():
+            logger.info("⚠️ Home Assistant not configured (URL/Token missing) - disabling feature")
+            FeatureFlags.disable("home_assistant")
+            return None
 
         try:
             from backend.services.home_assistant import get_ha_service
@@ -444,10 +465,11 @@ class ComponentInitializer:
 
             if ha_service.is_enabled():
                 logger.info("✅ Home Assistant service initialized and configured")
+                return ha_service
             else:
-                logger.info("⚠️ Home Assistant service initialized but not configured (URL/Token missing)")
-
-            return ha_service
+                logger.info("⚠️ Home Assistant not configured (URL/Token missing) - disabling feature")
+                FeatureFlags.disable("home_assistant")
+                return None
         except Exception as e:
             logger.error(f"Failed to initialize Home Assistant service: {e}")
             return None
