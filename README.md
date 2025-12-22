@@ -19,11 +19,14 @@ Lokales Assistenzsystem mit Chat-API, Memory-System, optionaler Tool-Integration
 
 ## Quickstart MacOS
 Easy Setup:
+Clone in your prefered Folder:
 ```bash
 git clone https://github.com/LordHayne/LexiAI.git
+```
+cd in your folder and: 
+```bash
 sh setup.sh
 ```
-
 
 
 
