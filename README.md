@@ -17,34 +17,15 @@ Lokales Assistenzsystem mit Chat-API, Memory-System, optionaler Tool-Integration
 - `docs/` Zentrale Dokumentation
 - Entrypoints: `main.py` (CLI), `start_middleware.py` (API)
 
-## Quickstart
-Backend:
+## Quickstart MacOS
+Easy Setup:
 ```bash
-pip install -r requirements.txt
-python start_middleware.py
+git clone https://github.com/LordHayne/LexiAI.git
+sh setup.sh
 ```
 
-Frontend:
-```bash
-cd frontend
-npm install
-npm run build
-```
 
-## Konfiguration
-- Beispiel-ENV: `.env.example`
-- Persistente Config: `backend/config/persistent_config.json`
-- Qdrant Host/Port via Config oder ENV
-- LLM/Embedding (z. B. Ollama) via Config oder ENV
 
-## Tests
-```bash
-make test
-make test-fast
-make lint
-make format
-make typecheck
-```
 
 ## Weitere Infos
 Siehe `docs/project_dokumentation.md` fuer Details.
