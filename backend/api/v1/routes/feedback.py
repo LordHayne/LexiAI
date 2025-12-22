@@ -273,14 +273,3 @@ async def get_feedback_stats():
         "feedback_rate": stats.get("feedback_rate", 0.0)
     }
 
-
-# Convenience function für anderen Code
-def get_conversation_tracker() -> ConversationTracker:
-    """
-    Gibt den Singleton ConversationTracker zurück.
-
-    Usage in anderen Modulen:
-        from backend.api.v1.routes.feedback import get_conversation_tracker
-        tracker = get_conversation_tracker()
-    """
-    return _conversation_tracker
