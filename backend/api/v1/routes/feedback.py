@@ -12,15 +12,15 @@ from datetime import datetime, UTC
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
-from backend.memory.conversation_tracker import ConversationTracker
+from backend.memory.conversation_tracker import get_conversation_tracker
 from backend.models.feedback import FeedbackEntry, FeedbackType
 
 logger = logging.getLogger("lexi_middleware.feedback")
 
 router = APIRouter(prefix="/v1/feedback", tags=["feedback"])
 
-# Singleton ConversationTracker
-_conversation_tracker = ConversationTracker()
+# Singleton ConversationTracker (shared with chat processing)
+_conversation_tracker = get_conversation_tracker()
 
 
 # Request Models

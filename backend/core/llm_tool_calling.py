@@ -36,6 +36,12 @@ AVAILABLE_TOOLS = {
         },
         "required": ["query", "reason"]
     },
+    "system_time": {
+        "name": "system_time",
+        "description": "Gibt die aktuelle Uhrzeit und das Datum des Servers zurück. Verwende dies für Fragen wie 'Wie spät ist es?' oder 'Welches Datum haben wir?'.",
+        "parameters": {},
+        "required": []
+    },
     "memory_search": {
         "name": "memory_search",
         "description": "Durchsuche das Langzeitgedächtnis nach spezifischen Informationen. Verwende dies für: frühere Gespräche, persönliche Präferenzen des Users, bereits gelernte Fakten.",
@@ -372,6 +378,21 @@ async def execute_tool(
                     data=None,
                     error="Web search service not enabled"
                 )
+
+        elif tool_name == "system_time":
+            from datetime import datetime
+
+            now = datetime.now().astimezone()
+            return ToolResult(
+                tool_name=tool_name,
+                success=True,
+                data={
+                    "iso": now.isoformat(timespec="seconds"),
+                    "time": now.strftime("%H:%M"),
+                    "date": now.strftime("%Y-%m-%d"),
+                    "timezone": now.tzname()
+                }
+            )
 
             query = params.get('query', '')
             search_result = await web_service.search(

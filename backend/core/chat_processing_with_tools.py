@@ -4,6 +4,7 @@ Chat Processing with LLM Tool-Calling System
 import asyncio
 import logging
 import time
+import re
 from typing import List, Dict, Any, Optional
 from backend.core.bootstrap import initialize_components
 from backend.utils.model_utils import call_model_async
@@ -75,6 +76,24 @@ async def process_chat_with_tools(
     # Phase 1.5: Classify query for performance optimization
     query_type = classify_query(clean_message)
     logger.info(f"🎯 Query classified as: {query_type}")
+
+    def is_time_query(text: str, lang: str) -> bool:
+        if lang == "de":
+            patterns = [
+                r"\bwie spät( ist es)?\b",
+                r"\buhrzeit\b",
+                r"\bwelches datum\b",
+                r"\bwelchen tag haben wir\b"
+            ]
+        else:
+            patterns = [
+                r"\bwhat time is it\b",
+                r"\bcurrent time\b",
+                r"\bwhat(?:'s| is) the date\b",
+                r"\bwhat day is it\b"
+            ]
+        lowered = text.lower()
+        return any(re.search(pattern, lowered) for pattern in patterns)
 
     # Check if user has existing memories and if this is first message in session
     session_manager = get_session_manager()
@@ -202,11 +221,14 @@ async def process_chat_with_tools(
         logger.info(f"✅ Multi-step execution completed with {len(step_results)} steps")
 
     else:
+        # Shortcut: local time/date queries should not rely on web search
+        if is_time_query(clean_message, language):
+            logger.info("⏰ Time query detected - using system_time tool")
+            tool_calls = [{"tool": "system_time", "params": {}}]
+            logger.info(f"⚙️ Executing {len(tool_calls)} tools...")
         # SMART HOME: Try Fast-Path first, fallback to LLM if needed
-        if query_type == QueryType.SMART_HOME_CONTROL or query_type == QueryType.SMART_HOME_QUERY:
+        elif query_type == QueryType.SMART_HOME_CONTROL or query_type == QueryType.SMART_HOME_QUERY:
             logger.info(f"🏠 Phase 3: Smart Home - Trying Fast-Path...")
-
-            import re
 
             # Extract entity and action from message
             message_lower = clean_message.lower()
@@ -358,6 +380,19 @@ async def process_chat_with_tools(
                     "source": "ha_tool_error",
                     "turn_id": None
                 }
+
+        # If all real tools failed, return an honest fallback to avoid hallucination
+        real_tool_results = [r for r in tool_results if r.tool_name != "no_tool"]
+        if real_tool_results and all(not r.success for r in real_tool_results):
+            error_msg = real_tool_results[0].error or "Tool failed"
+            logger.error(f"🚨 All tools failed - returning error directly: {error_msg}")
+            return {
+                "response": f"❌ {error_msg}. Ich kann das gerade nicht zuverlässig beantworten.",
+                "relevant_memory": relevant_docs,
+                "final": memory_used,
+                "source": "tool_error",
+                "turn_id": None
+            }
 
         tool_context = _format_tool_results(tool_results)
 

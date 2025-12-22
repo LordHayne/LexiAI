@@ -65,7 +65,7 @@ def classify_query(message: str) -> str:
         r"^läuft\s+(das|die|der)",
 
         # Temperature queries
-        r"^wie (warm|kalt|heiß|kühl)",
+        r"^wie\s+(?:warm|kalt|heiß|heiss|kühl)\b",
         r"^welche\s+temperatur",
         r"^temperatur\s+(im|in der|vom|von)",
         r"^how (warm|cold|hot|cool)",
