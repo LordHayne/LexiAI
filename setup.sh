@@ -198,7 +198,16 @@ if ! docker compose version > /dev/null 2>&1; then
     exit 1
 fi
 
-docker compose up -d qdrant
+if curl -s "${QDRANT_URL}/collections" > /dev/null 2>&1; then
+    echo -e "${GREEN}✅ Qdrant already running, skipping container start${NC}"
+else
+    if lsof -iTCP:6333 -sTCP:LISTEN > /dev/null 2>&1; then
+        echo -e "${RED}❌ Port 6333 is in use but Qdrant is not responding${NC}"
+        echo -e "${YELLOW}   Stop the process using port 6333 or change QDRANT_PORT in .env${NC}"
+        exit 1
+    fi
+    docker compose up -d qdrant
+fi
 
 if ! curl -s "${QDRANT_URL}/collections" > /dev/null 2>&1; then
     echo -e "${RED}❌ Qdrant is not accessible at ${QDRANT_HOST}:${QDRANT_PORT}${NC}"
