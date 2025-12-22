@@ -1,4 +1,5 @@
 # LexiAI
+<img width="1452" height="711" alt="Bildschirmfoto 2025-12-22 um 20 45 30" src="https://github.com/user-attachments/assets/9a08bb58-c3d8-4ba2-b4af-520537374a9d" />
 
 Lokales Assistenzsystem mit Chat-API, Memory-System, optionaler Tool-Integration
 (z. B. Home Assistant) und UI-Frontends.
@@ -7,6 +8,7 @@ Lokales Assistenzsystem mit Chat-API, Memory-System, optionaler Tool-Integration
 - Chat-Verarbeitung mit optionalem Tool-Calling
 - Langzeit-Memory in Qdrant (Retrieval, Filter, Feedback)
 - Profil-/Kontext-Anreicherung
+
 - Smart-Home-Integration (Home Assistant)
 - Optionale Web-Search-Integration
 
