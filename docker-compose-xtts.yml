@@ -1,7 +1,7 @@
 services:
   xtts-server:
     # Using pre-built XTTS API Server
-    image: daswer123/xtts-api-server:latest-cpu
+    image: daswer123/xtts-api-server:latest
     container_name: lexi-xtts-server
     ports:
       - "8020:80"  # XTTS Server läuft auf Port 8020
