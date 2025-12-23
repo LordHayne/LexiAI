@@ -25,7 +25,8 @@ from backend.utils.jwt_utils import (
     create_access_token,
     create_refresh_token,
     verify_token,
-    extract_user_id_from_token
+    extract_user_id_from_token,
+    JWTConfig
 )
 from backend.utils.password_utils import (
     hash_password,
@@ -335,8 +336,15 @@ async def login(request: LoginRequest, http_request: Request, response: Response
         _sync_user_store(user["user_id"], user.get("username"), user.get("email"))
 
         # Tokens erstellen
+        remember_me = bool(request.remember_me)
+        config = JWTConfig()
+        refresh_days = (
+            config.get_refresh_token_remember_days()
+            if remember_me
+            else config.get_refresh_token_expire_days()
+        )
         access_token = create_access_token(user["user_id"], email_lower)
-        refresh_token = create_refresh_token(user["user_id"], email_lower)
+        refresh_token = create_refresh_token(user["user_id"], email_lower, remember_me=remember_me)
 
         # Refresh Token speichern
         REFRESH_TOKENS[refresh_token] = {
@@ -364,14 +372,14 @@ async def login(request: LoginRequest, http_request: Request, response: Response
             path="/"        # Available for all routes
         )
 
-        # Refresh Token Cookie (7 days)
+        # Refresh Token Cookie (variable days)
         response.set_cookie(
             key="refresh_token",
             value=refresh_token,
             httponly=True,  # Cannot be accessed via JavaScript (XSS protection)
             secure=True,    # Only sent over HTTPS
             samesite="lax", # CSRF protection
-            max_age=604800, # 7 days in seconds
+            max_age=refresh_days * 86400, # days in seconds
             path="/"        # Available for all routes
         )
 
@@ -457,8 +465,15 @@ async def refresh_token(
         email = user["email"]
 
         # Neue Tokens erstellen
+        remember_me = bool(payload.get("remember", False))
+        config = JWTConfig()
+        refresh_days = (
+            config.get_refresh_token_remember_days()
+            if remember_me
+            else config.get_refresh_token_expire_days()
+        )
         new_access_token = create_access_token(user_id, email)
-        new_refresh_token = create_refresh_token(user_id, email)
+        new_refresh_token = create_refresh_token(user_id, email, remember_me=remember_me)
 
         # Alten Refresh Token invalidieren
         del REFRESH_TOKENS[refresh_token_value]
@@ -484,14 +499,14 @@ async def refresh_token(
             path="/"
         )
 
-        # Refresh Token Cookie (7 days)
+        # Refresh Token Cookie (variable days)
         response.set_cookie(
             key="refresh_token",
             value=new_refresh_token,
             httponly=True,  # XSS protection
             secure=True,    # HTTPS only
             samesite="lax", # CSRF protection
-            max_age=604800, # 7 days
+            max_age=refresh_days * 86400, # days
             path="/"
         )
 

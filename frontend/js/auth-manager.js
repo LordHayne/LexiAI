@@ -116,7 +116,7 @@ class AuthManager {
      * Login user
      * Backend sets HttpOnly cookies automatically
      */
-    async login(email, password) {
+    async login(email, password, rememberMe = false) {
         try {
             const response = await fetch(`${this.baseUrl}/v1/auth/login`, {
                 method: 'POST',
@@ -126,7 +126,8 @@ class AuthManager {
                 credentials: 'include', // CRITICAL: Send/receive cookies
                 body: JSON.stringify({
                     email,
-                    password
+                    password,
+                    remember_me: Boolean(rememberMe)
                 })
             });
 

@@ -96,6 +96,7 @@ async function handleLogin(event) {
 
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
+    const rememberMe = document.getElementById('remember')?.checked || false;
     const errorEl = document.getElementById('loginError');
     const submitBtn = document.getElementById('loginSubmitBtn');
 
@@ -113,7 +114,7 @@ async function handleLogin(event) {
             throw new Error('AuthManager not initialized');
         }
 
-        const result = await window.authManager.login(email, password);
+        const result = await window.authManager.login(email, password, rememberMe);
 
         if (!result.success) {
             throw new Error(result.error || 'Login fehlgeschlagen');

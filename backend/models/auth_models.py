@@ -67,6 +67,11 @@ class LoginRequest(BaseModel):
         examples=["SecurePass123"]
     )
 
+    remember_me: bool = Field(
+        default=False,
+        description="Session länger behalten (längere Refresh-Token-Laufzeit)"
+    )
+
     @field_validator('email')
     @classmethod
     def normalize_email(cls, v: str) -> str:

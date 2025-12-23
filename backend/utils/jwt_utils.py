@@ -41,6 +41,11 @@ class JWTConfig:
         """Refresh token expiration in days (default: 7)"""
         return int(os.getenv("LEXI_JWT_REFRESH_EXPIRE_DAYS", "7"))
 
+    @staticmethod
+    def get_refresh_token_remember_days() -> int:
+        """Refresh token expiration in days when remember_me is enabled (default: 30)"""
+        return int(os.getenv("LEXI_JWT_REFRESH_REMEMBER_DAYS", "30"))
+
 
 def create_access_token(
     user_id: str,
@@ -84,25 +89,38 @@ def create_access_token(
     return token
 
 
-def create_refresh_token(user_id: str, email: str) -> str:
+def create_refresh_token(
+    user_id: str,
+    email: str,
+    remember_me: bool = False,
+    expire_days: Optional[int] = None
+) -> str:
     """
-    Erstellt JWT Refresh Token mit 7 Tagen Gültigkeit
+    Erstellt JWT Refresh Token mit konfigurierter Gültigkeit
 
     Args:
         user_id: Eindeutige User-ID
         email: User-Email
+        remember_me: Längere Gültigkeit für "Angemeldet bleiben"
+        expire_days: Explizite Anzahl an Tagen (überschreibt defaults)
 
     Returns:
         JWT Refresh Token String
     """
     config = JWTConfig()
+    refresh_days = (
+        int(expire_days)
+        if expire_days is not None
+        else (config.get_refresh_token_remember_days() if remember_me else config.get_refresh_token_expire_days())
+    )
 
     payload = {
         "sub": user_id,
         "email": email,
         "type": "refresh",
+        "remember": bool(remember_me),
         "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(days=config.get_refresh_token_expire_days())
+        "exp": datetime.now(timezone.utc) + timedelta(days=refresh_days)
     }
 
     token = jwt.encode(
@@ -111,7 +129,9 @@ def create_refresh_token(user_id: str, email: str) -> str:
         algorithm=config.get_algorithm()
     )
 
-    logger.debug(f"Refresh Token erstellt für User {user_id} (gültig bis {payload['exp']})")
+    logger.debug(
+        f"Refresh Token erstellt für User {user_id} (gültig bis {payload['exp']}, remember_me={remember_me})"
+    )
     return token
 
 
