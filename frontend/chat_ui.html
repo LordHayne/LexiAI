@@ -1008,8 +1008,8 @@
                 // Hide typing indicator
                 typingIndicator.classList.remove('show');
 
-                // Add assistant response with feedback buttons
-                const turnId = data.turn_id || generateTurnId();
+                // Add assistant response with feedback buttons (only if turn_id provided)
+                const turnId = data.turn_id || null;
                 addMessage('assistant', data.response || data.message, turnId);
                 messageCount++;
                 updateStats();

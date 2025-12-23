@@ -345,6 +345,37 @@ async def heartbeat_status():
             }
         )
 
+
+@router.get("/debug/feedback/status")
+async def feedback_status():
+    """
+    Get feedback storage and hydration status.
+    Useful for debugging feedback learning pipeline.
+    """
+    try:
+        from backend.memory.conversation_tracker import get_conversation_tracker
+
+        tracker = get_conversation_tracker()
+        stats = tracker.get_feedback_stats()
+        storage_status = tracker.get_feedback_storage_status()
+
+        return {
+            "success": True,
+            "timestamp": datetime.datetime.now().isoformat(),
+            "feedback": stats,
+            "storage": storage_status,
+        }
+    except Exception as e:
+        logger.error(f"Error getting feedback status: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.datetime.now().isoformat()
+            }
+        )
+
 @router.post("/debug/heartbeat/trigger", dependencies=[Depends(verify_api_key)])
 async def trigger_heartbeat():
     """

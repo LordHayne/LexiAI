@@ -199,7 +199,7 @@ async def _run_chat_logic(
                 conversation_tracker.record_feedback,
                 reformulation_turn_id,
                 FeedbackType.IMPLICIT_REFORMULATION,
-                0.8
+                confidence=0.8
             )
             logger.info(f"🔄 Detected reformulation of turn {reformulation_turn_id}")
 
@@ -214,7 +214,7 @@ async def _run_chat_logic(
                     conversation_tracker.record_feedback,
                     last_turn.turn_id,
                     FeedbackType.IMPLICIT_CONTRADICTION,
-                    0.9
+                    confidence=0.9
                 )
                 logger.info(f"⚠️ Detected contradiction for turn {last_turn.turn_id}")
 

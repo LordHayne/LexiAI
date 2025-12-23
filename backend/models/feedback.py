@@ -34,6 +34,7 @@ class ErrorCategory(Enum):
 class ConversationTurn:
     """Ein Austausch: User-Message + AI-Response."""
     turn_id: str
+    user_id: str
     user_message: str
     ai_response: str
     timestamp: datetime
@@ -52,6 +53,8 @@ class FeedbackEntry:
     # Optional: Zusätzliche Infos
     user_comment: Optional[str] = None
     confidence: float = 1.0  # Bei implizitem Feedback niedriger
+    processed: bool = False
+    immediate_pending: bool = False
 
     # Analyse-Ergebnisse (gefüllt von Analyzer)
     error_category: Optional[ErrorCategory] = None
@@ -67,6 +70,9 @@ class FeedbackEntry:
             "timestamp": self.timestamp.isoformat(),
             "user_comment": self.user_comment,
             "confidence": self.confidence,
+            "has_correction": bool(self.suggested_correction),
+            "processed": self.processed,
+            "immediate_pending": self.immediate_pending,
             "error_category": self.error_category.value if self.error_category else None,
             "error_analysis": self.error_analysis,
             "suggested_correction": self.suggested_correction
@@ -82,6 +88,8 @@ class FeedbackEntry:
             timestamp=datetime.fromisoformat(data["timestamp"]),
             user_comment=data.get("user_comment"),
             confidence=data.get("confidence", 1.0),
+            processed=data.get("processed", False),
+            immediate_pending=data.get("immediate_pending", False),
             error_category=ErrorCategory(data["error_category"]) if data.get("error_category") else None,
             error_analysis=data.get("error_analysis"),
             suggested_correction=data.get("suggested_correction")

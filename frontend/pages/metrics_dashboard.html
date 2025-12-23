@@ -231,6 +231,38 @@
             color: var(--text-color);
         }
 
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+        }
+
+        .status-item {
+            background: var(--section-bg);
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            border: 1px solid var(--border-color);
+        }
+
+        .status-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .status-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        .status-meta {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
         .time-selector {
             background: var(--input-bg);
             border: 1px solid var(--border-color);
@@ -576,6 +608,16 @@
                     <!-- Will be populated by JavaScript -->
                 </div>
             </div>
+
+            <!-- Feedback Learning Status -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3 class="chart-title">🧠 Feedback-Lernen</h3>
+                </div>
+                <div id="feedbackStatus">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
         </div>
 
         <!-- Slow Queries Table -->
@@ -653,6 +695,17 @@
                 return await response.json();
             } catch (error) {
                 console.error('Error fetching component metrics:', error);
+                return null;
+            }
+        }
+
+        async function fetchFeedbackStatus() {
+            try {
+                const response = await fetch('/debug/feedback/status');
+                if (!response.ok) throw new Error('Failed to fetch feedback status');
+                return await response.json();
+            } catch (error) {
+                console.error('Error fetching feedback status:', error);
                 return null;
             }
         }
@@ -909,6 +962,60 @@
             `;
         }
 
+        async function renderFeedbackStatus() {
+            const data = await fetchFeedbackStatus();
+            const container = document.getElementById('feedbackStatus');
+            if (!data || !data.feedback || !data.storage) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚠️</div>
+                        <p>Feedback-Status nicht verfügbar</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const feedback = data.feedback;
+            const storage = data.storage;
+            const storageState = storage.storage_ready ? 'success' : (storage.storage_failed ? 'error' : 'warning');
+            const storageLabel = storage.storage_ready ? '✓ Ready' : (storage.storage_failed ? '✗ Offline' : '… Pending');
+            const lastHydration = storage.last_feedback_hydration_at
+                ? new Date(storage.last_feedback_hydration_at * 1000).toLocaleTimeString('de-DE')
+                : 'n/a';
+            const feedbackRate = feedback.feedback_rate !== undefined
+                ? `${feedback.feedback_rate.toFixed(1)}%`
+                : 'n/a';
+
+            container.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div class="stat-subtitle">Live-Lernstatus & Rückstau</div>
+                    <div class="badge ${storageState}">${storageLabel}</div>
+                </div>
+                <div class="status-grid">
+                    <div class="status-item">
+                        <div class="status-label">Unbearbeitet</div>
+                        <div class="status-value">${formatNumber(feedback.unprocessed_count || 0)}</div>
+                        <div class="status-meta">Feedbacks offen</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">Gesamt</div>
+                        <div class="status-value">${formatNumber(feedback.total_feedbacks || 0)}</div>
+                        <div class="status-meta">Rate ${feedbackRate}</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">Korrekturen</div>
+                        <div class="status-value">${formatNumber(feedback.correction_count || 0)}</div>
+                        <div class="status-meta">explizit/analysiert</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">Hydration</div>
+                        <div class="status-value">${lastHydration}</div>
+                        <div class="status-meta">Letztes Update</div>
+                    </div>
+                </div>
+            `;
+        }
+
         // Render slow queries table
         function renderSlowQueries(data) {
             const container = document.getElementById('slowQueriesTable');
@@ -1000,6 +1107,7 @@
             renderLatencyMetrics(data);
             await renderCacheMetrics();
             await renderComponentMetrics();
+            await renderFeedbackStatus();
             renderSlowQueries(data);
             renderErrors(data);
         }

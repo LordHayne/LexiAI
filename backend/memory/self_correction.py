@@ -18,6 +18,7 @@ from backend.models.memory_entry import MemoryEntry
 logger = logging.getLogger("lexi_middleware.self_correction")
 
 
+
 class SelfCorrectionAnalyzer:
     """
     Analysiert fehlerhafte Antworten und generiert Korrekturen.
@@ -335,6 +336,8 @@ def analyze_and_correct_failures(stop_check_fn=None) -> int:
                 feedback.error_category = error_category
                 feedback.error_analysis = analysis
                 feedback.suggested_correction = correction
+                feedback.processed = True
+                tracker.update_feedback_entry(feedback)
 
             logger.info(f"✅ Created correction for turn {turn.turn_id}")
 
@@ -344,3 +347,59 @@ def analyze_and_correct_failures(stop_check_fn=None) -> int:
 
     logger.info(f"✅ Self-correction complete: {corrections_created} corrections created")
     return corrections_created
+
+
+def analyze_and_correct_turn(turn_id: str) -> bool:
+    """
+    Analyse und korrigiere einen einzelnen Turn sofort.
+
+    Returns:
+        True wenn eine Correction erstellt wurde, sonst False.
+    """
+    from backend.core.component_cache import get_cached_components
+    from backend.memory.conversation_tracker import get_conversation_tracker
+
+    tracker = get_conversation_tracker()
+    turn = tracker.get_turn(turn_id)
+    if not turn:
+        logger.warning("Turn %s not found for immediate correction", turn_id)
+        return False
+
+    feedbacks = tracker.get_feedback_for_turn(turn_id)
+    negative_feedbacks = [
+        fb for fb in feedbacks
+        if not fb.processed and fb.feedback_type in [
+            FeedbackType.EXPLICIT_NEGATIVE,
+            FeedbackType.IMPLICIT_REFORMULATION,
+            FeedbackType.IMPLICIT_CONTRADICTION,
+            FeedbackType.SEMANTIC_IRRELEVANT,
+            FeedbackType.SEMANTIC_CONTRADICTION
+        ]
+    ]
+    if not negative_feedbacks:
+        return False
+
+    try:
+        bundle = get_cached_components()
+        analyzer = SelfCorrectionAnalyzer(bundle.chat_client, bundle.embeddings)
+
+        error_category, analysis = analyzer.analyze_failure(turn, negative_feedbacks)
+        correction = analyzer.generate_correction(turn, error_category, analysis)
+        correction_memory = analyzer.create_correction_memory(
+            turn, correction, error_category, analysis
+        )
+        bundle.vectorstore.store_entry(correction_memory)
+
+        for feedback in negative_feedbacks:
+            feedback.error_category = error_category
+            feedback.error_analysis = analysis
+            feedback.suggested_correction = correction
+            feedback.processed = True
+            feedback.immediate_pending = False
+            tracker.update_feedback_entry(feedback)
+
+        logger.info("✅ Immediate correction created for turn %s", turn_id)
+        return True
+    except Exception as e:
+        logger.error("Immediate correction failed for turn %s: %s", turn_id, e)
+        return False

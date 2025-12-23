@@ -185,6 +185,15 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Error starting Heartbeat Service: {str(e)}")
 
+    # Start feedback worker (optional, controlled via env)
+    try:
+        from backend.services.feedback_worker import start_feedback_worker
+        started = start_feedback_worker()
+        if started:
+            logger.info("🧠 Feedback worker started (immediate corrections)")
+    except Exception as e:
+        logger.error(f"Error starting Feedback Worker: {str(e)}")
+
     yield
 
     # Shutdown - Graceful cleanup
@@ -849,7 +858,14 @@ async def ui_chat(
                         timeout=DEFAULT_TIMEOUT
                     )
 
-                    response_text, memory_used, source, memory_entries, turn_id = response_data
+                    if isinstance(response_data, dict):
+                        response_text = response_data.get("response", "")
+                        memory_used = response_data.get("final", True)
+                        source = response_data.get("source", "llm")
+                        memory_entries = response_data.get("relevant_memory", [])
+                        turn_id = response_data.get("turn_id")
+                    else:
+                        response_text, memory_used, source, memory_entries, turn_id = response_data
 
             except asyncio.TimeoutError:
                 logger.error(f"Chat processing timed out after {DEFAULT_TIMEOUT} seconds")

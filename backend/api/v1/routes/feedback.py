@@ -136,19 +136,27 @@ async def thumbs_down(request: ThumbsFeedbackRequest):
             turn_id=request.turn_id,
             feedback_type=FeedbackType.EXPLICIT_NEGATIVE,
             timestamp=datetime.now(UTC),
-            confidence=1.0
+            confidence=1.0,
+            immediate_pending=True
         )
 
         # Speichere Feedback
         _conversation_tracker.add_feedback(request.turn_id, feedback)
 
+        # Start worker lazily on first feedback
+        try:
+            from backend.services.feedback_worker import start_feedback_worker
+            start_feedback_worker(force=True)
+        except Exception as e:
+            logger.warning("Failed to start feedback worker: %s", e)
+
         logger.info(f"✅ Negatives Feedback gespeichert: {feedback.feedback_id}")
-        logger.info(f"   → Wird im nächsten Heartbeat (IDLE Mode) analysiert")
+        logger.info(f"   → Für Background Worker markiert (immediate_pending)")
 
         return FeedbackResponse(
             status="ok",
             feedback_id=feedback.feedback_id,
-            message="Negatives Feedback gespeichert. Wird analysiert im nächsten Heartbeat.",
+            message="Negatives Feedback gespeichert. Wird vom Background Worker verarbeitet.",
             turn_found=True
         )
 
@@ -196,11 +204,40 @@ async def correction(request: CorrectionFeedbackRequest):
             timestamp=datetime.now(UTC),
             confidence=1.0,
             user_comment=request.correction_text,
-            suggested_correction=request.correction_text  # User gibt direkt die Korrektur
+            suggested_correction=request.correction_text,  # User gibt direkt die Korrektur
+            processed=True
         )
 
         # Speichere Feedback
         _conversation_tracker.add_feedback(request.turn_id, feedback)
+
+        # Store explicit correction as high-priority memory for immediate learning
+        try:
+            from backend.memory.adapter import store_memory_async
+
+            correction_content = f"""SELBST-KORREKTUR (EXPLIZIT):
+
+Ursprüngliche Frage: {turn.user_message}
+
+Fehlerhafte Antwort: {turn.ai_response[:300]}
+
+Korrektur vom User:
+{request.correction_text}
+"""
+            await store_memory_async(
+                content=correction_content,
+                user_id=turn.user_id,
+                tags=["self_correction", "user_feedback", "explicit_correction"],
+                metadata={
+                    "category": "self_correction",
+                    "relevance": 1.0,
+                    "turn_id": request.turn_id,
+                    "feedback_id": feedback.feedback_id,
+                    "source": "explicit_feedback"
+                }
+            )
+        except Exception as e:
+            logger.warning("Failed to store explicit correction memory: %s", e)
 
         logger.info(f"✅ Explizite Korrektur gespeichert: {feedback.feedback_id}")
         logger.info(f"   Korrektur: {request.correction_text[:100]}...")
@@ -208,7 +245,7 @@ async def correction(request: CorrectionFeedbackRequest):
         return FeedbackResponse(
             status="ok",
             feedback_id=feedback.feedback_id,
-            message="Korrektur gespeichert. Wird im nächsten Heartbeat verarbeitet.",
+            message="Korrektur gespeichert und sofort als Memory hinterlegt.",
             turn_found=True
         )
 
@@ -270,6 +307,6 @@ async def get_feedback_stats():
         "positive_feedbacks": stats.get("positive_count", 0),
         "negative_feedbacks": stats.get("negative_count", 0),
         "correction_feedbacks": stats.get("correction_count", 0),
+        "unprocessed_feedbacks": stats.get("unprocessed_count", 0),
         "feedback_rate": stats.get("feedback_rate", 0.0)
     }
-

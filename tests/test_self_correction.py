@@ -39,6 +39,7 @@ Der Fehler liegt darin, dass veraltete oder falsche Fakten verwendet wurden."""
         # Erstelle fehlerhaften Turn
         turn = ConversationTurn(
             turn_id=str(uuid4()),
+            user_id="test_user",
             user_message="When was Docker released?",
             ai_response="Docker was released in 2010.",
             timestamp=datetime.now(timezone.utc)
@@ -81,6 +82,7 @@ Wichtige Schritte fehlen komplett."""
 
         turn = ConversationTurn(
             turn_id=str(uuid4()),
+            user_id="test_user",
             user_message="How do I install Docker?",
             ai_response="Docker is a containerization platform.",
             timestamp=datetime.now(timezone.utc)
@@ -125,6 +127,7 @@ To install Docker:
 
         turn = ConversationTurn(
             turn_id=str(uuid4()),
+            user_id="test_user",
             user_message="When was Docker released and how do I install it?",
             ai_response="Docker is a container platform.",
             timestamp=datetime.now(timezone.utc)
@@ -161,6 +164,7 @@ To install Docker:
 
         turn = ConversationTurn(
             turn_id=str(uuid4()),
+            user_id="test_user",
             user_message="What is Kubernetes?",
             ai_response="It's a Google product.",
             timestamp=datetime.now(timezone.utc)
@@ -250,6 +254,7 @@ class TestAnalyzeAndCorrectFailures:
         for i in range(10):
             turn = ConversationTurn(
                 turn_id=f"turn_{i}",
+                user_id="test_user",
                 user_message=f"Question {i}",
                 ai_response=f"Bad answer {i}",
                 timestamp=datetime.now(timezone.utc)
@@ -412,6 +417,7 @@ Die korrekte Antwort sollte :q oder :wq erklären."""
 
         turn = ConversationTurn(
             turn_id=str(uuid4()),
+            user_id="test_user",
             user_message="Test",
             ai_response="Test",
             timestamp=datetime.now(timezone.utc)
