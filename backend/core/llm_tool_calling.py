@@ -379,22 +379,25 @@ async def execute_tool(
                     error="Web search service not enabled"
                 )
 
-        elif tool_name == "system_time":
-            from datetime import datetime
-
-            now = datetime.now().astimezone()
-            return ToolResult(
-                tool_name=tool_name,
-                success=True,
-                data={
-                    "iso": now.isoformat(timespec="seconds"),
-                    "time": now.strftime("%H:%M"),
-                    "date": now.strftime("%Y-%m-%d"),
-                    "timezone": now.tzname()
-                }
-            )
-
             query = params.get('query', '')
+            if isinstance(query, dict):
+                for key in ("query", "text", "type", "title"):
+                    candidate = query.get(key, "")
+                    if isinstance(candidate, str) and candidate.strip():
+                        query = candidate
+                        break
+                else:
+                    query = ""
+            elif not isinstance(query, str):
+                query = str(query)
+            query = query.strip()
+            if not query:
+                return ToolResult(
+                    tool_name=tool_name,
+                    success=False,
+                    data=None,
+                    error="Web search query missing"
+                )
             search_result = await web_service.search(
                 query=query,
                 max_results=5,
@@ -414,6 +417,21 @@ async def execute_tool(
                     data=None,
                     error="No results found"
                 )
+
+        elif tool_name == "system_time":
+            from datetime import datetime
+
+            now = datetime.now().astimezone()
+            return ToolResult(
+                tool_name=tool_name,
+                success=True,
+                data={
+                    "iso": now.isoformat(timespec="seconds"),
+                    "time": now.strftime("%H:%M"),
+                    "date": now.strftime("%Y-%m-%d"),
+                    "timezone": now.tzname()
+                }
+            )
 
         elif tool_name == "memory_search":
             # Execute specific memory search
