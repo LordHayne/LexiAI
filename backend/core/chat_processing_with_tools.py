@@ -95,10 +95,23 @@ async def process_chat_with_tools(
         lowered = text.lower()
         return any(re.search(pattern, lowered) for pattern in patterns)
 
+    def is_confirmation(text: str) -> bool:
+        text_lower = text.lower().strip()
+        confirm_tokens = [
+            "ja", "ok", "okay", "passt", "speichern", "speichere",
+            "apply", "ja bitte", "bitte speichern", "mach es", "mach das"
+        ]
+        return any(token == text_lower or text_lower.startswith(token + " ") for token in confirm_tokens)
+
     # Check if user has existing memories and if this is first message in session
     session_manager = get_session_manager()
     conversation_history = session_manager.get_conversation_history(user_id, max_turns=5)
     is_first_message_in_session = len(conversation_history) == 0
+
+    pending_automation = session_manager.get_pending_automation(user_id)
+    pending_script = session_manager.get_pending_script(user_id)
+    if (pending_automation or pending_script) and is_confirmation(clean_message):
+        query_type = QueryType.SMART_HOME_AUTOMATION
 
     # Check if user has ANY memories in Qdrant (not just relevant to current query)
     # This is important for greetings where relevant_docs might be empty
@@ -310,15 +323,31 @@ async def process_chat_with_tools(
 
         # Check if tools are needed for this query type
         elif needs_tools(query_type):
-            logger.info(f"🤖 Phase 3: Single-step execution - LLM selecting tools...")
-            tool_calls = await select_tools(
-                message=clean_message,
-                context_docs=relevant_docs,
-                chat_client=chat_client,
-                language=language
-            )
+            pending_automation = session_manager.get_pending_automation(user_id)
+            pending_script = session_manager.get_pending_script(user_id)
 
-            logger.info(f"⚙️ Executing {len(tool_calls)} tools...")
+            if is_confirmation(clean_message) and pending_automation:
+                logger.info("🧾 Confirmation detected - applying pending automation")
+                tool_calls = [{
+                    "tool": "home_assistant_create_automation",
+                    "params": {"automation": pending_automation, "apply": True}
+                }]
+            elif is_confirmation(clean_message) and pending_script:
+                logger.info("🧾 Confirmation detected - applying pending script")
+                tool_calls = [{
+                    "tool": "home_assistant_create_script",
+                    "params": {"script": pending_script, "apply": True}
+                }]
+            else:
+                logger.info(f"🤖 Phase 3: Single-step execution - LLM selecting tools...")
+                tool_calls = await select_tools(
+                    message=clean_message,
+                    context_docs=relevant_docs,
+                    chat_client=chat_client,
+                    language=language
+                )
+
+                logger.info(f"⚙️ Executing {len(tool_calls)} tools...")
         else:
             logger.info(f"⚡ Phase 3: Fast-path - Direct LLM response (no tools needed)")
             tool_calls = []
@@ -331,6 +360,18 @@ async def process_chat_with_tools(
                 logger.info(f"✅ Tool {result.tool_name} succeeded")
             else:
                 logger.warning(f"❌ Tool {result.tool_name} failed: {result.error}")
+
+            if result.tool_name == "home_assistant_create_automation" and result.data:
+                if result.data.get("preview") and result.data.get("automation") and result.data.get("valid"):
+                    session_manager.set_pending_automation(user_id, result.data["automation"])
+                elif result.success:
+                    session_manager.clear_pending_automation(user_id)
+
+            if result.tool_name == "home_assistant_create_script" and result.data:
+                if result.data.get("preview") and result.data.get("script") and result.data.get("valid"):
+                    session_manager.set_pending_script(user_id, result.data["script"])
+                elif result.success:
+                    session_manager.clear_pending_script(user_id)
 
         # Check if clarification was requested
         for result in tool_results:
@@ -404,7 +445,14 @@ async def process_chat_with_tools(
         if real_tools_used:
             # Check if home assistant tools were used
             ha_tools_used = any(r.tool_name in ["home_assistant_control", "home_assistant_query"] for r in tool_results)
-            prompt_type = "ha_control" if ha_tools_used else "tools_used"
+            ha_automation_used = any(
+                r.tool_name in ["home_assistant_create_automation", "home_assistant_create_script"]
+                for r in tool_results
+            )
+            if ha_automation_used:
+                prompt_type = "ha_automation"
+            else:
+                prompt_type = "ha_control" if ha_tools_used else "tools_used"
         else:
             prompt_type = "no_tools"
 
@@ -583,6 +631,44 @@ def _format_tool_results(results: List[ToolResult]) -> str:
             formatted += f"  Wert: {formatted_value}\n"
             if sensor_type:
                 formatted += f"  Typ: {sensor_type}\n"
+
+        elif result.tool_name == "home_assistant_create_automation" and result.data:
+            preview = result.data.get("preview")
+            valid = result.data.get("valid")
+            errors = result.data.get("errors", [])
+            automation = result.data.get("automation", {})
+            alias = automation.get("alias", "Automation")
+            summary = result.data.get("summary")
+
+            formatted += f"  Automation: {alias}\n"
+            formatted += f"  Preview: {preview}\n"
+            if valid is not None:
+                formatted += f"  Valid: {valid}\n"
+            if summary:
+                formatted += f"  Summary: {summary}\n"
+            if errors:
+                formatted += "  Errors:\n"
+                for err in errors[:3]:
+                    formatted += f"    - {err}\n"
+
+        elif result.tool_name == "home_assistant_create_script" and result.data:
+            preview = result.data.get("preview")
+            valid = result.data.get("valid")
+            errors = result.data.get("errors", [])
+            script = result.data.get("script", {})
+            alias = script.get("alias", "Script")
+            summary = result.data.get("summary")
+
+            formatted += f"  Script: {alias}\n"
+            formatted += f"  Preview: {preview}\n"
+            if valid is not None:
+                formatted += f"  Valid: {valid}\n"
+            if summary:
+                formatted += f"  Summary: {summary}\n"
+            if errors:
+                formatted += "  Errors:\n"
+                for err in errors[:3]:
+                    formatted += f"    - {err}\n"
 
     return formatted
 

@@ -10,6 +10,70 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 
+def _summarize_automation(automation: Dict[str, Any]) -> str:
+    trigger = automation.get("trigger", [])
+    action = automation.get("action", [])
+    triggers = trigger if isinstance(trigger, list) else [trigger]
+    actions = action if isinstance(action, list) else [action]
+
+    def describe_trigger(item: Dict[str, Any]) -> str:
+        platform = item.get("platform")
+        if platform == "time":
+            at = item.get("at")
+            return f"um {at}" if at else "zeitbasiert"
+        if platform == "state":
+            entity_id = item.get("entity_id", "unbekannt")
+            to_state = item.get("to")
+            return f"{entity_id} -> {to_state}" if to_state else f"Status von {entity_id}"
+        if platform == "sun":
+            event = item.get("event", "sun")
+            return f"{event}"
+        return f"Trigger ({platform})" if platform else "Trigger"
+
+    def describe_action(item: Dict[str, Any]) -> str:
+        service = item.get("service", "service")
+        target = item.get("target", {})
+        entity_id = item.get("entity_id") or (target.get("entity_id") if isinstance(target, dict) else None)
+        if entity_id:
+            if isinstance(entity_id, list):
+                entity_id = ", ".join(entity_id[:3])
+            return f"{service} ({entity_id})"
+        return service
+
+    trigger_text = "; ".join(
+        describe_trigger(t) for t in triggers if isinstance(t, dict)
+    )
+    action_text = "; ".join(
+        describe_action(a) for a in actions if isinstance(a, dict)
+    )
+    parts = []
+    if trigger_text:
+        parts.append(f"Ausloeser: {trigger_text}")
+    if action_text:
+        parts.append(f"Aktivitaeten: {action_text}")
+    return " | ".join(parts) if parts else "Automation vorbereitet"
+
+
+def _summarize_script(script: Dict[str, Any]) -> str:
+    sequence = script.get("sequence", [])
+    steps = sequence if isinstance(sequence, list) else [sequence]
+
+    def describe_action(item: Dict[str, Any]) -> str:
+        service = item.get("service", "service")
+        target = item.get("target", {})
+        entity_id = item.get("entity_id") or (target.get("entity_id") if isinstance(target, dict) else None)
+        if entity_id:
+            if isinstance(entity_id, list):
+                entity_id = ", ".join(entity_id[:3])
+            return f"{service} ({entity_id})"
+        return service
+
+    action_text = "; ".join(
+        describe_action(a) for a in steps if isinstance(a, dict)
+    )
+    return f"Aktivitaeten: {action_text}" if action_text else "Script vorbereitet"
+
+
 @dataclass
 class ToolResult:
     """Result from a tool execution"""
@@ -108,6 +172,36 @@ AVAILABLE_TOOLS = {
             }
         },
         "required": ["entity_id"]
+    },
+    "home_assistant_create_automation": {
+        "name": "home_assistant_create_automation",
+        "description": "Erstelle eine Home Assistant Automation. NUR verwenden wenn der User explizit eine Automation erstellen will. Standard ist Preview; apply=true nur nach ausdruecklicher Bestaetigung.",
+        "parameters": {
+            "automation": {
+                "type": "object",
+                "description": "Automation config (alias, trigger, condition optional, action)"
+            },
+            "apply": {
+                "type": "boolean",
+                "description": "Wenn true, wird die Automation gespeichert (nur nach Bestaetigung)."
+            }
+        },
+        "required": ["automation"]
+    },
+    "home_assistant_create_script": {
+        "name": "home_assistant_create_script",
+        "description": "Erstelle ein Home Assistant Script. NUR verwenden wenn der User explizit ein Script erstellen will. Standard ist Preview; apply=true nur nach ausdruecklicher Bestaetigung.",
+        "parameters": {
+            "script": {
+                "type": "object",
+                "description": "Script config (alias, sequence)"
+            },
+            "apply": {
+                "type": "boolean",
+                "description": "Wenn true, wird das Script gespeichert (nur nach Bestaetigung)."
+            }
+        },
+        "required": ["script"]
     }
 }
 
@@ -165,6 +259,13 @@ ENTSCHEIDUNGSLOGIK (PRIORITÄTEN):
    - Funktioniert mit natürlichen Namen: "Wohnzimmer", "Küche", "Badezimmer"
    - **KEINE no_tool bei Smart Home Anfragen!**
 
+🏗️ **SMART HOME AUTOMATIONEN & SCRIPTS**:
+   - Wenn der User Automationen oder Scripts erstellen/ändern will:
+     - **home_assistant_create_automation** oder **home_assistant_create_script** verwenden
+     - Standard: **Preview** (apply=false)
+     - apply=true NUR nach expliziter Bestätigung durch den User
+   - Beispiele: "Erstelle eine Automation...", "Leg ein Script an..."
+
 📊 **NORMALE PRIORITÄT**:
 1. **web_search**: Wenn aktuelle/externe Infos nötig sind (News, Firmendaten, Fakten)
 2. **memory_search**: Nur wenn mehr Memory-Details benötigt werden als im Context vorhanden
@@ -218,6 +319,18 @@ User: "Wie warm ist es im Wohnzimmer?"
 {{
     "reasoning": "Temperatur-Sensor-Abfrage im Wohnzimmer",
     "tools": [{{"tool": "home_assistant_query", "params": {{"entity_id": "Wohnzimmer"}}}}]
+}}
+
+User: "Erstelle eine Automation: Jeden Tag um 7 Uhr Küchenlicht an"
+{{
+    "reasoning": "User will eine Automation erstellen - Preview zuerst",
+    "tools": [{{"tool": "home_assistant_create_automation", "params": {{"automation": {{"alias": "Kuechenlicht morgens", "trigger": {{"platform": "time", "at": "07:00:00"}}, "action": [{{"service": "light.turn_on", "target": {{"entity_id": "light.kueche"}}}}]}}, "apply": false}}}}]
+}}
+
+User: "Speichere die Automation"
+{{
+    "reasoning": "User bestaetigt - apply=true",
+    "tools": [{{"tool": "home_assistant_create_automation", "params": {{"automation": {{"alias": "Kuechenlicht morgens", "trigger": {{"platform": "time", "at": "07:00:00"}}, "action": [{{"service": "light.turn_on", "target": {{"entity_id": "light.kueche"}}}}]}}, "apply": true}}}}]
 }}
 
 User: "Wie geht's dir?"
@@ -500,7 +613,17 @@ async def execute_tool(
 
         elif tool_name == "home_assistant_control":
             # Execute Home Assistant device control
+            from backend.config.feature_flags import FeatureFlags
             from backend.services.home_assistant import get_ha_service
+
+            if not FeatureFlags.is_enabled("home_assistant"):
+                return ToolResult(
+                    tool_name=tool_name,
+                    success=False,
+                    data=None,
+                    error="Home Assistant ist deaktiviert (Feature-Flag)."
+                )
+
             ha_service = get_ha_service()
 
             if not ha_service.is_enabled():
@@ -541,7 +664,11 @@ async def execute_tool(
                         tool_name=tool_name,
                         success=False,
                         data=None,
-                        error=f"Konnte '{entity_id_raw}' nicht auflösen. Bitte verwende die vollständige Entity-ID (z.B. 'light.wohnzimmer')."
+                        error=(
+                            f"Konnte '{entity_id_raw}' nicht aufloesen. "
+                            "Bitte pruefe den Namen oder verwende die vollstaendige Entity-ID "
+                            "(z.B. 'light.wohnzimmer')."
+                        )
                     )
                 logger.info(f"✅ Resolved '{entity_id_raw}' -> '{entity_id}'")
             else:
@@ -558,7 +685,17 @@ async def execute_tool(
 
         elif tool_name == "home_assistant_query":
             # Query Home Assistant device state
+            from backend.config.feature_flags import FeatureFlags
             from backend.services.home_assistant import get_ha_service
+
+            if not FeatureFlags.is_enabled("home_assistant"):
+                return ToolResult(
+                    tool_name=tool_name,
+                    success=False,
+                    data=None,
+                    error="Home Assistant ist deaktiviert (Feature-Flag)."
+                )
+
             ha_service = get_ha_service()
 
             if not ha_service.is_enabled():
@@ -580,6 +717,74 @@ async def execute_tool(
                 success=result.get('success', False),
                 data=result,
                 error=result.get('error')
+            )
+
+        elif tool_name == "home_assistant_create_automation":
+            from backend.config.feature_flags import FeatureFlags
+            from backend.services.home_assistant import get_ha_service
+
+            if not FeatureFlags.is_enabled("home_assistant"):
+                return ToolResult(
+                    tool_name=tool_name,
+                    success=False,
+                    data=None,
+                    error="Home Assistant ist deaktiviert (Feature-Flag)."
+                )
+
+            ha_service = get_ha_service()
+            if not ha_service.is_enabled():
+                return ToolResult(
+                    tool_name=tool_name,
+                    success=False,
+                    data=None,
+                    error="Home Assistant nicht konfiguriert"
+                )
+
+            automation = params.get("automation", {})
+            apply = params.get("apply", False)
+            result = await ha_service.create_automation(automation, apply=apply)
+            if result.get("automation"):
+                result["summary"] = _summarize_automation(result["automation"])
+
+            return ToolResult(
+                tool_name=tool_name,
+                success=result.get("success", False),
+                data=result,
+                error=result.get("error")
+            )
+
+        elif tool_name == "home_assistant_create_script":
+            from backend.config.feature_flags import FeatureFlags
+            from backend.services.home_assistant import get_ha_service
+
+            if not FeatureFlags.is_enabled("home_assistant"):
+                return ToolResult(
+                    tool_name=tool_name,
+                    success=False,
+                    data=None,
+                    error="Home Assistant ist deaktiviert (Feature-Flag)."
+                )
+
+            ha_service = get_ha_service()
+            if not ha_service.is_enabled():
+                return ToolResult(
+                    tool_name=tool_name,
+                    success=False,
+                    data=None,
+                    error="Home Assistant nicht konfiguriert"
+                )
+
+            script = params.get("script", {})
+            apply = params.get("apply", False)
+            result = await ha_service.create_script(script, apply=apply)
+            if result.get("script"):
+                result["summary"] = _summarize_script(result["script"])
+
+            return ToolResult(
+                tool_name=tool_name,
+                success=result.get("success", False),
+                data=result,
+                error=result.get("error")
             )
 
         else:

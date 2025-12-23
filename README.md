@@ -34,3 +34,11 @@ sh setup.sh
 
 ## Weitere Infos
 Siehe `docs/project_dokumentation.md` fuer Details.
+
+## Home Assistant (optional)
+Home Assistant kann ueber ENV oder Config angebunden werden.
+
+- ENV Variablen:
+  - `LEXI_HA_URL` (z. B. `http://homeassistant.local:8123`)
+  - `LEXI_HA_TOKEN` (Long-Lived Access Token)
+- UI: `frontend/pages/config_ui.html` enthaelt einen Verbindungstest (`/v1/config/test-ha`).

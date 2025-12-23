@@ -32,6 +32,8 @@ class ConversationSession:
         self.messages: deque = deque(maxlen=max_turns * 2)  # * 2 für user + assistant
         self.created_at = datetime.utcnow()
         self.last_active = datetime.utcnow()
+        self.pending_automation: Optional[dict] = None
+        self.pending_script: Optional[dict] = None
 
     def add_message(self, role: str, content: str):
         """
@@ -193,6 +195,36 @@ class SessionManager:
             self.sessions[user_id].clear()
             del self.sessions[user_id]
             logger.info(f"🗑️  Session deleted for user: {user_id}")
+
+    def set_pending_automation(self, user_id: str, automation: dict):
+        """Store pending automation for confirmation flow."""
+        session = self.get_session(user_id)
+        session.pending_automation = automation
+
+    def get_pending_automation(self, user_id: str) -> Optional[dict]:
+        """Get pending automation for confirmation flow."""
+        session = self.get_session(user_id)
+        return session.pending_automation
+
+    def clear_pending_automation(self, user_id: str):
+        """Clear pending automation for confirmation flow."""
+        session = self.get_session(user_id)
+        session.pending_automation = None
+
+    def set_pending_script(self, user_id: str, script: dict):
+        """Store pending script for confirmation flow."""
+        session = self.get_session(user_id)
+        session.pending_script = script
+
+    def get_pending_script(self, user_id: str) -> Optional[dict]:
+        """Get pending script for confirmation flow."""
+        session = self.get_session(user_id)
+        return session.pending_script
+
+    def clear_pending_script(self, user_id: str):
+        """Clear pending script for confirmation flow."""
+        session = self.get_session(user_id)
+        session.pending_script = None
 
     def _cleanup_expired_sessions(self):
         """Cleanup abgelaufener Sessions (automatisch)."""

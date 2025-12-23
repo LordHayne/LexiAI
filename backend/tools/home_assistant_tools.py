@@ -4,10 +4,11 @@ Home Assistant LLM Tools
 Provides LangChain tools for Home Assistant device control via LLM.
 """
 import logging
-from typing import Optional, Type
+from typing import Optional, Type, Dict, Any
 from pydantic import BaseModel, Field
 from langchain.tools import BaseTool
 from backend.services.home_assistant import get_ha_service
+from backend.config.feature_flags import FeatureFlags
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,93 @@ class ListEntitiesInput(BaseModel):
     domain: Optional[str] = Field(
         default=None,
         description="Optional domain filter (e.g., 'light', 'switch', 'climate', 'cover')"
+    )
+
+
+class CreateAutomationInput(BaseModel):
+    """Input schema for creating Home Assistant automations."""
+    automation: Dict[str, Any] = Field(
+        description="Automation config dict (alias, trigger, condition, action)"
+    )
+    apply: bool = Field(
+        default=False,
+        description="Wenn true, wird die Automation in Home Assistant gespeichert (sonst nur Preview)."
+    )
+
+
+class CreateScriptInput(BaseModel):
+    """Input schema for creating Home Assistant scripts."""
+    script: Dict[str, Any] = Field(
+        description="Script config dict (alias, sequence)"
+    )
+
+
+def _describe_trigger(trigger: Dict[str, Any]) -> str:
+    platform = trigger.get("platform")
+    if platform == "time":
+        at = trigger.get("at")
+        return f"um {at}" if at else "zeitbasiert"
+    if platform == "state":
+        entity_id = trigger.get("entity_id", "unbekannt")
+        to_state = trigger.get("to")
+        from_state = trigger.get("from")
+        parts = [f"{entity_id}"]
+        if from_state:
+            parts.append(f"von {from_state}")
+        if to_state:
+            parts.append(f"nach {to_state}")
+        return "Status " + " ".join(parts)
+    if platform == "sun":
+        event = trigger.get("event", "sun")
+        offset = trigger.get("offset")
+        return f"{event}" + (f" ({offset})" if offset else "")
+    return f"Trigger ({platform})" if platform else "Trigger"
+
+
+def _describe_action(action: Dict[str, Any]) -> str:
+    service = action.get("service", "service")
+    entity_id = action.get("entity_id")
+    if not entity_id:
+        target = action.get("target", {})
+        entity_id = target.get("entity_id") if isinstance(target, dict) else None
+    if not entity_id:
+        data = action.get("data", {})
+        entity_id = data.get("entity_id") if isinstance(data, dict) else None
+    if entity_id:
+        if isinstance(entity_id, list):
+            entity_str = ", ".join(entity_id[:3])
+        else:
+            entity_str = str(entity_id)
+        return f"{service} ({entity_str})"
+    return service
+
+
+def _describe_automation(automation: Dict[str, Any]) -> str:
+    triggers = automation.get("trigger", [])
+    actions = automation.get("action", [])
+    trigger_list = triggers if isinstance(triggers, list) else [triggers]
+    action_list = actions if isinstance(actions, list) else [actions]
+
+    trigger_desc = "; ".join(_describe_trigger(t) for t in trigger_list if isinstance(t, dict))
+    action_desc = "; ".join(_describe_action(a) for a in action_list if isinstance(a, dict))
+
+    parts = []
+    if trigger_desc:
+        parts.append(f"Ausloeser: {trigger_desc}")
+    if action_desc:
+        parts.append(f"Aktivitaeten: {action_desc}")
+
+    return " | ".join(parts) if parts else "Automation vorbereitet"
+
+
+def _describe_script(script: Dict[str, Any]) -> str:
+    sequence = script.get("sequence", [])
+    seq_list = sequence if isinstance(sequence, list) else [sequence]
+    action_desc = "; ".join(_describe_action(a) for a in seq_list if isinstance(a, dict))
+    return f"Aktivitaeten: {action_desc}" if action_desc else "Script vorbereitet"
+    apply: bool = Field(
+        default=False,
+        description="Wenn true, wird das Script in Home Assistant gespeichert (sonst nur Preview)."
     )
 
 
@@ -75,6 +163,9 @@ class HomeAssistantControlTool(BaseTool):
     async def _arun(self, entity_id: str, action: str, value: Optional[float] = None) -> str:
         """Async implementation."""
         try:
+            if not FeatureFlags.is_enabled("home_assistant"):
+                return "❌ Home Assistant ist deaktiviert (Feature-Flag)."
+
             ha_service = get_ha_service()
 
             if not ha_service.is_enabled():
@@ -135,6 +226,9 @@ class HomeAssistantStateTool(BaseTool):
     async def _arun(self, entity_id: str) -> str:
         """Async implementation."""
         try:
+            if not FeatureFlags.is_enabled("home_assistant"):
+                return "❌ Home Assistant ist deaktiviert (Feature-Flag)."
+
             ha_service = get_ha_service()
 
             if not ha_service.is_enabled():
@@ -214,6 +308,9 @@ class HomeAssistantListTool(BaseTool):
     async def _arun(self, domain: Optional[str] = None) -> str:
         """Async implementation."""
         try:
+            if not FeatureFlags.is_enabled("home_assistant"):
+                return "❌ Home Assistant ist deaktiviert (Feature-Flag)."
+
             ha_service = get_ha_service()
 
             if not ha_service.is_enabled():
@@ -259,6 +356,104 @@ class HomeAssistantListTool(BaseTool):
         return "❌ Home Assistant Tool requires async execution"
 
 
+class HomeAssistantCreateAutomationTool(BaseTool):
+    """
+    Tool for creating Home Assistant automations (preview by default).
+    """
+    name: str = "home_assistant_create_automation"
+    description: str = """
+    Erstelle Home Assistant Automationen. Standard ist Preview (kein Speichern).
+    Verwende apply=true nur nach ausdruecklicher Bestaetigung des Users.
+    """
+    args_schema: Type[BaseModel] = CreateAutomationInput
+    return_direct: bool = False
+
+    async def _arun(self, automation: Dict[str, Any], apply: bool = False) -> str:
+        try:
+            if not FeatureFlags.is_enabled("home_assistant"):
+                return "❌ Home Assistant ist deaktiviert (Feature-Flag)."
+
+            ha_service = get_ha_service()
+            if not ha_service.is_enabled():
+                return "❌ Home Assistant ist nicht konfiguriert."
+
+            result = await ha_service.create_automation(automation, apply=apply)
+
+            if not result.get("success"):
+                errors = result.get("errors") or [result.get("error", "Unbekannter Fehler")]
+                return "❌ Automation nicht erstellt:\n- " + "\n- ".join(errors)
+
+            if result.get("preview"):
+                automation_payload = result.get("automation", {})
+                alias = automation_payload.get("alias", "Automation")
+                description = _describe_automation(automation_payload)
+                return (
+                    f"📝 Ich habe eine Automation vorbereitet: {alias}\n"
+                    f"{description}\n"
+                    "Soll ich sie speichern?"
+                )
+
+            created = result.get("automation", {})
+            alias = created.get("alias", "Automation")
+            return f"✅ Automation gespeichert: {alias}"
+
+        except Exception as e:
+            logger.error(f"Error in home_assistant_create_automation tool: {e}")
+            return f"❌ Fehler bei Automation: {str(e)}"
+
+    def _run(self, automation: Dict[str, Any], apply: bool = False) -> str:
+        return "❌ Home Assistant Tool requires async execution"
+
+
+class HomeAssistantCreateScriptTool(BaseTool):
+    """
+    Tool for creating Home Assistant scripts (preview by default).
+    """
+    name: str = "home_assistant_create_script"
+    description: str = """
+    Erstelle Home Assistant Scripts. Standard ist Preview (kein Speichern).
+    Verwende apply=true nur nach ausdruecklicher Bestaetigung des Users.
+    """
+    args_schema: Type[BaseModel] = CreateScriptInput
+    return_direct: bool = False
+
+    async def _arun(self, script: Dict[str, Any], apply: bool = False) -> str:
+        try:
+            if not FeatureFlags.is_enabled("home_assistant"):
+                return "❌ Home Assistant ist deaktiviert (Feature-Flag)."
+
+            ha_service = get_ha_service()
+            if not ha_service.is_enabled():
+                return "❌ Home Assistant ist nicht konfiguriert."
+
+            result = await ha_service.create_script(script, apply=apply)
+
+            if not result.get("success"):
+                errors = result.get("errors") or [result.get("error", "Unbekannter Fehler")]
+                return "❌ Script nicht erstellt:\n- " + "\n- ".join(errors)
+
+            if result.get("preview"):
+                script_payload = result.get("script", {})
+                alias = script_payload.get("alias", "Script")
+                description = _describe_script(script_payload)
+                return (
+                    f"📝 Ich habe ein Script vorbereitet: {alias}\n"
+                    f"{description}\n"
+                    "Soll ich es speichern?"
+                )
+
+            created = result.get("script", {})
+            alias = created.get("alias", "Script")
+            return f"✅ Script gespeichert: {alias}"
+
+        except Exception as e:
+            logger.error(f"Error in home_assistant_create_script tool: {e}")
+            return f"❌ Fehler bei Script: {str(e)}"
+
+    def _run(self, script: Dict[str, Any], apply: bool = False) -> str:
+        return "❌ Home Assistant Tool requires async execution"
+
+
 # Tool factory functions
 def get_home_assistant_tools():
     """
@@ -270,7 +465,9 @@ def get_home_assistant_tools():
     return [
         HomeAssistantControlTool(),
         HomeAssistantStateTool(),
-        HomeAssistantListTool()
+        HomeAssistantListTool(),
+        HomeAssistantCreateAutomationTool(),
+        HomeAssistantCreateScriptTool()
     ]
 
 

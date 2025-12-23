@@ -15,6 +15,7 @@ class QueryType:
     SIMPLE_CONFIRMATION = "simple_confirmation"  # Ja, Nein, Ok
     SMART_HOME_CONTROL = "smart_home_control"  # Schalte X ein, Mach X aus
     SMART_HOME_QUERY = "smart_home_query"  # Ist X an?, Wie hell ist X?
+    SMART_HOME_AUTOMATION = "smart_home_automation"  # Automationen/Scripts erstellen oder aendern
     COMPLEX_QUERY = "complex_query"  # Needs full tool system
 
 
@@ -57,6 +58,21 @@ def classify_query(message: str) -> str:
 
     # Check Smart Home patterns FIRST (highest priority!)
     # Query patterns FIRST (to avoid false positives with control patterns)
+    automation_keywords = [
+        "automation", "automatisierung", "automationen",
+        "script", "skript", "routine", "zeitplan", "schedule", "automatisiere"
+    ]
+    device_keywords = [
+        "licht", "lampe", "beleuchtung", "heizung", "thermostat", "klima",
+        "schalter", "steckdose", "rollladen", "jalousie", "media", "tv",
+        "musik", "tuer", "tür", "schloss", "ventilator", "fan"
+    ]
+    has_automation = any(keyword in message_lower for keyword in automation_keywords)
+    has_auto_adverb = "automatisch" in message_lower and any(keyword in message_lower for keyword in device_keywords)
+    if has_automation or has_auto_adverb:
+        logger.info("🏠 Smart Home Automation detected")
+        return QueryType.SMART_HOME_AUTOMATION
+
     query_patterns = [
         # Status queries
         r"^ist\s+(das|die|der)\s+.+(an|aus|eingeschaltet|ausgeschaltet)",
@@ -143,7 +159,11 @@ def needs_tools(query_type: str) -> bool:
         True if tools are needed
     """
     # Smart Home queries ALWAYS need tools!
-    if query_type in [QueryType.SMART_HOME_CONTROL, QueryType.SMART_HOME_QUERY]:
+    if query_type in [
+        QueryType.SMART_HOME_CONTROL,
+        QueryType.SMART_HOME_QUERY,
+        QueryType.SMART_HOME_AUTOMATION
+    ]:
         return True
 
     return query_type == QueryType.COMPLEX_QUERY

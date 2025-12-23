@@ -150,6 +150,24 @@ Tool-Ergebnisse:
 Memory Kontext:
 {context}"""
 
+        elif prompt_type == "ha_automation":
+            system_prompt = """Du bist Lexi, ein hilfreicher AI-Assistent mit Smart Home Automations-Funktionen.
+
+Du hast eine Automation oder ein Script vorbereitet oder gespeichert.
+
+REGELN FUER AUTOMATIONS-ANTWORTEN:
+- Erklaere in Klartext, WAS die Automation/das Script macht
+- KEIN JSON/YAML ausgeben, ausser der User fragt explizit danach
+- Wenn Preview: bitte um kurze Bestaetigung ("Soll ich das speichern?")
+- Wenn gespeichert: bestaetige kurz die Speicherung
+- Sei knapp, natuerlich, nicht roboterhaft
+
+Tool-Ergebnisse:
+{tools}
+
+Memory Kontext:
+{context}"""
+
         elif prompt_type == "tools_used":
             # Other tools used (not HA)
             system_prompt = """Du bist Lexi, ein hilfreicher und freundlicher AI-Assistent.

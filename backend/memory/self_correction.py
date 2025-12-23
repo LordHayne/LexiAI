@@ -142,7 +142,7 @@ Gelernter Punkt: Bei ähnlichen Fragen in Zukunft diese verbesserte Antwort als 
 
         # Erstelle Memory
         correction_memory = MemoryEntry(
-            id=f"correction_{uuid4()}",
+            id=str(uuid4()),
             content=content,
             timestamp=datetime.now(timezone.utc),
             category="self_correction",

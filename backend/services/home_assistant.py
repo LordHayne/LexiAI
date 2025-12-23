@@ -56,6 +56,19 @@ class HomeAssistantService:
         self._entities_cache_time: float = 0
         self._entities_cache_ttl = 300.0  # 5 minutes cache for entities
         self._friendly_name_map: Dict[str, List[str]] = {}  # friendly_name -> entity_ids
+        self._registry_cache_time: float = 0
+        self._registry_cache_ttl = 300.0  # 5 minutes cache for registry data
+        self._areas_cache: Optional[List[Dict[str, Any]]] = None
+        self._devices_cache: Optional[List[Dict[str, Any]]] = None
+        self._entity_registry_cache: Optional[List[Dict[str, Any]]] = None
+        self._area_name_map: Dict[str, str] = {}  # area name -> area_id
+        self._device_name_map: Dict[str, str] = {}  # device name -> device_id
+
+        # Allowed service domains for automation/script creation
+        self._allowed_service_domains = {
+            "light", "switch", "climate", "cover", "media_player", "lock",
+            "fan", "scene", "script", "homeassistant", "automation"
+        }
 
         if not self.url:
             logger.warning("Home Assistant URL nicht konfiguriert. Setze LEXI_HA_URL.")
@@ -324,6 +337,7 @@ class HomeAssistantService:
                 return cached_data
 
         try:
+            logger.info(f"🏠 Home Assistant: State query for {entity_id}")
             session = await self._get_session()
             headers = {
                 "Authorization": f"Bearer {self.token}",
@@ -417,6 +431,8 @@ class HomeAssistantService:
                 "error": "Home Assistant nicht konfiguriert"
             }
 
+        logger.info(f"🏠 Home Assistant: Sensor query for '{entity_id}'")
+
         # Resolve entity if it's not a full entity_id
         resolved_entity = entity_id
         if '.' not in entity_id:
@@ -425,7 +441,10 @@ class HomeAssistantService:
             if not resolved_entity:
                 return {
                     "success": False,
-                    "error": f"Konnte Entity '{entity_id}' nicht finden"
+                    "error": (
+                        f"Konnte Entity '{entity_id}' nicht finden. "
+                        "Bitte pruefe den Namen oder verwende die vollstaendige Entity-ID."
+                    )
                 }
 
         # Get entity state
@@ -554,6 +573,10 @@ class HomeAssistantService:
             }
 
         try:
+            logger.info(
+                "🏠 Home Assistant: Entity list requested"
+                + (f" (domain={domain})" if domain else "")
+            )
             session = await self._get_session()
             headers = {
                 "Authorization": f"Bearer {self.token}",
@@ -620,6 +643,208 @@ class HomeAssistantService:
                 "success": False,
                 "error": f"Unexpected error: {str(e)}"
             }
+
+    async def _call_service(self, domain: str, service: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Call a Home Assistant service without requiring an entity_id."""
+        session = await self._get_session()
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json"
+        }
+        url = f"{self.url}/api/services/{domain}/{service}"
+        payload = data or {}
+
+        try:
+            async with session.post(url, json=payload, headers=headers) as resp:
+                if resp.status == 200:
+                    return {"success": True, "result": await resp.json()}
+                error_text = await resp.text()
+                return {"success": False, "error": f"HTTP {resp.status}: {error_text[:200]}"}
+        except asyncio.TimeoutError:
+            return {"success": False, "error": "Request timeout - Home Assistant nicht erreichbar"}
+        except aiohttp.ClientError as e:
+            return {"success": False, "error": f"Network error: {str(e)}"}
+
+    async def _fetch_registry(self, path: str) -> Optional[List[Dict[str, Any]]]:
+        """
+        Fetch registry data (areas/devices/entities) from Home Assistant.
+
+        Returns:
+            List of registry entries, or None if unavailable.
+        """
+        session = await self._get_session()
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json"
+        }
+        url = f"{self.url}{path}"
+
+        try:
+            async with session.get(url, headers=headers) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+                if resp.status in [400, 401, 403, 404]:
+                    logger.info(f"🏠 Home Assistant registry endpoint not available: {path} ({resp.status})")
+                    return None
+                error_text = await resp.text()
+                logger.warning(f"🏠 Home Assistant registry error {resp.status}: {error_text[:120]}")
+                return None
+        except asyncio.TimeoutError:
+            logger.warning(f"⏱️ Timeout beim Registry-Request: {path}")
+            return None
+        except aiohttp.ClientError as e:
+            logger.warning(f"🌐 Network error beim Registry-Request {path}: {e}")
+            return None
+
+    async def _load_registry_cache(self) -> None:
+        """Load area/device/entity registry caches if available."""
+        current_time = asyncio.get_event_loop().time()
+        if self._entity_registry_cache and (current_time - self._registry_cache_time) < self._registry_cache_ttl:
+            return
+
+        areas = await self._fetch_registry("/api/areas")
+        devices = await self._fetch_registry("/api/devices")
+        entities = await self._fetch_registry("/api/entities")
+
+        if areas is not None:
+            self._areas_cache = areas
+            self._area_name_map = {
+                area.get("name", "").lower(): area.get("area_id")
+                for area in areas
+                if area.get("name") and area.get("area_id")
+            }
+
+        if devices is not None:
+            self._devices_cache = devices
+            self._device_name_map = {
+                (device.get("name_by_user") or device.get("name") or "").lower(): device.get("id") or device.get("device_id")
+                for device in devices
+                if device.get("name_by_user") or device.get("name")
+            }
+
+        if entities is not None:
+            self._entity_registry_cache = entities
+
+        if any(x is not None for x in [areas, devices, entities]):
+            self._registry_cache_time = current_time
+            logger.info(
+                "✅ Loaded registry cache (areas=%s, devices=%s, entities=%s)",
+                len(areas or []),
+                len(devices or []),
+                len(entities or [])
+            )
+
+    async def create_automation(self, automation: Dict[str, Any], apply: bool = False) -> Dict[str, Any]:
+        """
+        Create a Home Assistant automation.
+
+        Args:
+            automation: Automation config dict
+            apply: If False, return preview only
+        """
+        if not self.is_enabled():
+            return {"success": False, "error": "Home Assistant nicht konfiguriert"}
+
+        normalized, errors = self._normalize_automation_payload(automation)
+        validation = await self._validate_actions(normalized.get("action", []))
+        errors.extend(validation)
+
+        if errors:
+            return {
+                "success": False,
+                "preview": True,
+                "valid": False,
+                "errors": errors,
+                "automation": normalized
+            }
+
+        if not apply:
+            return {
+                "success": True,
+                "preview": True,
+                "valid": True,
+                "automation": normalized
+            }
+
+        session = await self._get_session()
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json"
+        }
+        url = f"{self.url}/api/config/automation/config"
+
+        async with session.post(url, json=normalized, headers=headers) as resp:
+            if resp.status not in [200, 201]:
+                error_text = await resp.text()
+                return {"success": False, "error": f"HTTP {resp.status}: {error_text[:200]}"}
+
+            created = await resp.json()
+
+        reload_result = await self._call_service("automation", "reload")
+        if not reload_result.get("success"):
+            await self._rollback_automation(created)
+            return {
+                "success": False,
+                "error": f"Automation gespeichert, aber Reload fehlgeschlagen: {reload_result.get('error')}"
+            }
+
+        return {"success": True, "preview": False, "automation": created}
+
+    async def create_script(self, script: Dict[str, Any], apply: bool = False) -> Dict[str, Any]:
+        """
+        Create a Home Assistant script.
+
+        Args:
+            script: Script config dict
+            apply: If False, return preview only
+        """
+        if not self.is_enabled():
+            return {"success": False, "error": "Home Assistant nicht konfiguriert"}
+
+        normalized, errors = self._normalize_script_payload(script)
+        validation = await self._validate_actions(normalized.get("sequence", []))
+        errors.extend(validation)
+
+        if errors:
+            return {
+                "success": False,
+                "preview": True,
+                "valid": False,
+                "errors": errors,
+                "script": normalized
+            }
+
+        if not apply:
+            return {
+                "success": True,
+                "preview": True,
+                "valid": True,
+                "script": normalized
+            }
+
+        session = await self._get_session()
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json"
+        }
+        url = f"{self.url}/api/config/script/config"
+
+        async with session.post(url, json=normalized, headers=headers) as resp:
+            if resp.status not in [200, 201]:
+                error_text = await resp.text()
+                return {"success": False, "error": f"HTTP {resp.status}: {error_text[:200]}"}
+
+            created = await resp.json()
+
+        reload_result = await self._call_service("script", "reload")
+        if not reload_result.get("success"):
+            await self._rollback_script(created)
+            return {
+                "success": False,
+                "error": f"Script gespeichert, aber Reload fehlgeschlagen: {reload_result.get('error')}"
+            }
+
+        return {"success": True, "preview": False, "script": created}
 
     async def _load_entities_cache(self) -> bool:
         """
@@ -747,7 +972,23 @@ class HomeAssistantService:
             logger.info(f"✓ Partial match: '{natural_query}' -> {entity_id}")
             return entity_id
 
-        # 4. No match found
+        # 4. Area/Device-based match (if registry available)
+        await self._load_registry_cache()
+        area_match = self._match_area_or_device(query_lower, is_area=True)
+        if area_match:
+            entity_id = self._select_entity_from_registry(area_match, is_area=True, domain=domain, preferred_domains=preferred_domains)
+            if entity_id:
+                logger.info(f"✓ Area match: '{natural_query}' -> {entity_id}")
+                return entity_id
+
+        device_match = self._match_area_or_device(query_lower, is_area=False)
+        if device_match:
+            entity_id = self._select_entity_from_registry(device_match, is_area=False, domain=domain, preferred_domains=preferred_domains)
+            if entity_id:
+                logger.info(f"✓ Device match: '{natural_query}' -> {entity_id}")
+                return entity_id
+
+        # 5. No match found
         logger.warning(f"❌ No entity found for: '{natural_query}'" + (f" (domain={domain})" if domain else ""))
         return None
 
@@ -787,11 +1028,200 @@ class HomeAssistantService:
             return ["light"]
         if any(token in text_lower for token in ["steckdose", "schalter", "kaffeemaschine", "switch"]):
             return ["switch"]
+        if any(token in text_lower for token in ["rollladen", "jalousie", "markise", "cover"]):
+            return ["cover"]
+        if any(token in text_lower for token in ["tv", "fernseher", "musik", "radio", "media"]):
+            return ["media_player"]
+        if any(token in text_lower for token in ["lüfter", "ventilator", "fan"]):
+            return ["fan"]
+        if any(token in text_lower for token in ["schloss", "tür", "tueren", "lock"]):
+            return ["lock"]
 
         if for_query:
             return ["light", "switch", "sensor", "climate", "binary_sensor", "cover", "media_player"]
 
         return None
+
+    def _normalize_automation_payload(self, automation: Dict[str, Any]) -> tuple[Dict[str, Any], List[str]]:
+        """Normalize automation payload to list-based triggers/conditions/actions."""
+        errors: List[str] = []
+        normalized = dict(automation or {})
+
+        alias = normalized.get("alias")
+        if not alias:
+            errors.append("Automation: 'alias' fehlt.")
+
+        trigger = normalized.get("trigger")
+        if trigger is None:
+            errors.append("Automation: 'trigger' fehlt.")
+            trigger_list = []
+        else:
+            trigger_list = trigger if isinstance(trigger, list) else [trigger]
+
+        condition = normalized.get("condition", [])
+        condition_list = condition if isinstance(condition, list) else [condition] if condition else []
+
+        action = normalized.get("action")
+        if action is None:
+            errors.append("Automation: 'action' fehlt.")
+            action_list = []
+        else:
+            action_list = action if isinstance(action, list) else [action]
+
+        normalized["trigger"] = trigger_list
+        normalized["condition"] = condition_list
+        normalized["action"] = action_list
+
+        return normalized, errors
+
+    def _normalize_script_payload(self, script: Dict[str, Any]) -> tuple[Dict[str, Any], List[str]]:
+        """Normalize script payload to list-based sequence."""
+        errors: List[str] = []
+        normalized = dict(script or {})
+
+        alias = normalized.get("alias")
+        if not alias:
+            errors.append("Script: 'alias' fehlt.")
+
+        sequence = normalized.get("sequence")
+        if sequence is None:
+            errors.append("Script: 'sequence' fehlt.")
+            sequence_list = []
+        else:
+            sequence_list = sequence if isinstance(sequence, list) else [sequence]
+
+        normalized["sequence"] = sequence_list
+
+        return normalized, errors
+
+    async def _validate_actions(self, actions: List[Dict[str, Any]]) -> List[str]:
+        """Validate actions for allowed services and existing entities."""
+        errors: List[str] = []
+        if not actions:
+            return errors
+
+        entities_result = await self.list_entities()
+        entity_ids = set()
+        if entities_result.get("success"):
+            entity_ids = {e.get("entity_id") for e in entities_result.get("entities", []) if e.get("entity_id")}
+
+        for action in actions:
+            if not isinstance(action, dict):
+                errors.append("Aktion muss ein Objekt sein.")
+                continue
+            service = action.get("service")
+            if service:
+                domain = service.split(".")[0]
+                if domain not in self._allowed_service_domains:
+                    errors.append(f"Service-Domain nicht erlaubt: {domain}")
+
+            for entity_id in self._extract_entity_ids(action):
+                if isinstance(entity_id, str) and ("{{" in entity_id or "{%" in entity_id):
+                    continue
+                if entity_ids and entity_id not in entity_ids:
+                    errors.append(f"Entity nicht gefunden: {entity_id}")
+
+        return errors
+
+    def _extract_entity_ids(self, action: Dict[str, Any]) -> List[str]:
+        """Extract entity_id references from an action."""
+        entity_ids: List[str] = []
+
+        if "entity_id" in action:
+            value = action.get("entity_id")
+            if isinstance(value, list):
+                entity_ids.extend(value)
+            elif isinstance(value, str):
+                entity_ids.append(value)
+
+        target = action.get("target", {})
+        target_entity = target.get("entity_id") if isinstance(target, dict) else None
+        if target_entity:
+            if isinstance(target_entity, list):
+                entity_ids.extend(target_entity)
+            elif isinstance(target_entity, str):
+                entity_ids.append(target_entity)
+
+        data = action.get("data", {})
+        data_entity = data.get("entity_id") if isinstance(data, dict) else None
+        if data_entity:
+            if isinstance(data_entity, list):
+                entity_ids.extend(data_entity)
+            elif isinstance(data_entity, str):
+                entity_ids.append(data_entity)
+
+        return entity_ids
+
+    async def _rollback_automation(self, created: Dict[str, Any]) -> None:
+        """Best-effort rollback for automation creation."""
+        automation_id = created.get("id") or created.get("automation_id")
+        if not automation_id:
+            return
+        session = await self._get_session()
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json"
+        }
+        url = f"{self.url}/api/config/automation/config/{automation_id}"
+        try:
+            async with session.delete(url, headers=headers) as resp:
+                if resp.status in [200, 204]:
+                    logger.warning(f"↩️ Rolled back automation {automation_id}")
+        except Exception:
+            logger.warning("↩️ Rollback automation failed", exc_info=True)
+
+    async def _rollback_script(self, created: Dict[str, Any]) -> None:
+        """Best-effort rollback for script creation."""
+        script_id = created.get("id") or created.get("script_id")
+        if not script_id:
+            return
+        session = await self._get_session()
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json"
+        }
+        url = f"{self.url}/api/config/script/config/{script_id}"
+        try:
+            async with session.delete(url, headers=headers) as resp:
+                if resp.status in [200, 204]:
+                    logger.warning(f"↩️ Rolled back script {script_id}")
+        except Exception:
+            logger.warning("↩️ Rollback script failed", exc_info=True)
+
+    def _match_area_or_device(self, query_lower: str, is_area: bool) -> Optional[str]:
+        """Try to match query against area or device names."""
+        name_map = self._area_name_map if is_area else self._device_name_map
+        if not name_map:
+            return None
+
+        if query_lower in name_map:
+            return name_map[query_lower]
+
+        matches = get_close_matches(query_lower, list(name_map.keys()), n=1, cutoff=0.7)
+        if matches:
+            return name_map[matches[0]]
+
+        return None
+
+    def _select_entity_from_registry(
+        self,
+        registry_id: str,
+        is_area: bool,
+        domain: Optional[str],
+        preferred_domains: Optional[List[str]]
+    ) -> Optional[str]:
+        """Pick an entity from registry cache by area/device id."""
+        if not self._entity_registry_cache:
+            return None
+
+        key = "area_id" if is_area else "device_id"
+        candidates = [
+            entry.get("entity_id")
+            for entry in self._entity_registry_cache
+            if entry.get(key) == registry_id and entry.get("entity_id")
+        ]
+
+        return self._select_entity(candidates, domain, preferred_domains)
 
 
 # Singleton instance
