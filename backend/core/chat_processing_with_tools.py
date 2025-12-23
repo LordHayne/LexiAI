@@ -569,6 +569,8 @@ def _format_tool_results(results: List[ToolResult]) -> str:
             formatted += f"  Action: {action}\n"
             if result.data.get('value'):
                 formatted += f"  Value: {result.data['value']}\n"
+            if result.data.get('state'):
+                formatted += f"  Status: {result.data['state']}\n"
 
         elif result.tool_name == "home_assistant_query" and result.data:
             # Format Home Assistant sensor query result with formatted values

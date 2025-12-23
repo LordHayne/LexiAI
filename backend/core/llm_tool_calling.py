@@ -519,13 +519,22 @@ async def execute_tool(
             if '.' not in entity_id_raw:
                 # Extract domain hint from action
                 domain_hint = None
-                if 'brightness' in action or action in ['turn_on', 'turn_off', 'toggle']:
+                preferred_domains = None
+                if action == 'set_brightness':
                     domain_hint = 'light'
-                elif 'temperature' in action:
+                    preferred_domains = ['light']
+                elif action == 'set_temperature':
                     domain_hint = 'climate'
+                    preferred_domains = ['climate']
+                else:
+                    preferred_domains = ['light', 'switch', 'cover', 'lock', 'media_player', 'fan', 'climate']
 
                 logger.info(f"🔍 Resolving natural query: '{entity_id_raw}' (domain hint: {domain_hint})")
-                entity_id = await ha_service.resolve_entity(entity_id_raw, domain=domain_hint)
+                entity_id = await ha_service.resolve_entity(
+                    entity_id_raw,
+                    domain=domain_hint,
+                    preferred_domains=preferred_domains
+                )
 
                 if not entity_id:
                     return ToolResult(

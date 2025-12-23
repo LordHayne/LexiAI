@@ -47,11 +47,15 @@ class HomeAssistantService:
         self._state_cache: Dict[str, tuple[Dict[str, Any], float]] = {}
         self._cache_ttl = 30.0  # 30 seconds cache
 
+        # Post-action verification
+        self._verify_state_delay = 0.35  # delay before state check
+        self._verify_state_retries = 2  # total attempts
+
         # Entity resolution cache
         self._entities_cache: Optional[List[Dict[str, Any]]] = None
         self._entities_cache_time: float = 0
         self._entities_cache_ttl = 300.0  # 5 minutes cache for entities
-        self._friendly_name_map: Dict[str, str] = {}  # friendly_name -> entity_id
+        self._friendly_name_map: Dict[str, List[str]] = {}  # friendly_name -> entity_ids
 
         if not self.url:
             logger.warning("Home Assistant URL nicht konfiguriert. Setze LEXI_HA_URL.")
@@ -99,6 +103,48 @@ class HomeAssistantService:
             self._state_cache.pop(entity_id, None)
         else:
             self._state_cache.clear()
+
+    async def _verify_state(
+        self,
+        entity_id: str,
+        expected_state: Optional[str]
+    ) -> Dict[str, Any]:
+        """
+        Verify device state after a control action.
+
+        Returns:
+            Dict with verification details and latest state if available
+        """
+        last_state = None
+        last_error = None
+
+        for attempt in range(self._verify_state_retries):
+            if attempt > 0:
+                await asyncio.sleep(self._verify_state_delay)
+
+            state_result = await self.get_state(entity_id, use_cache=False)
+            if not state_result.get("success"):
+                last_error = state_result.get("error")
+                continue
+
+            last_state = state_result
+            state_value = state_result.get("state")
+
+            if expected_state is None or state_value == expected_state:
+                return {
+                    "verified": True,
+                    "state": state_value,
+                    "attributes": state_result.get("attributes", {}),
+                    "expected_state": expected_state
+                }
+
+        return {
+            "verified": False,
+            "state": last_state.get("state") if last_state else None,
+            "attributes": last_state.get("attributes", {}) if last_state else {},
+            "expected_state": expected_state,
+            "error": last_error or "Status nicht erreicht"
+        }
 
     async def control_device(
         self,
@@ -175,12 +221,41 @@ class HomeAssistantService:
                         # Invalidate cache for this entity
                         self._invalidate_cache(entity_id)
 
+                        expected_state = None
+                        if action in ["turn_on", "set_brightness"]:
+                            expected_state = "on"
+                        elif action == "turn_off":
+                            expected_state = "off"
+
+                        verification = await self._verify_state(entity_id, expected_state)
+
+                        if expected_state and not verification.get("verified"):
+                            state_value = verification.get("state")
+                            error_msg = (
+                                f"Status nach Aktion '{action}' ist '{state_value}' "
+                                f"(erwartet '{expected_state}')"
+                            )
+                            return {
+                                "success": False,
+                                "entity_id": entity_id,
+                                "action": action,
+                                "service": f"{domain}.{service}",
+                                "result": result,
+                                "state": state_value,
+                                "attributes": verification.get("attributes", {}),
+                                "verification": verification,
+                                "error": error_msg
+                            }
+
                         return {
                             "success": True,
                             "entity_id": entity_id,
                             "action": action,
                             "service": f"{domain}.{service}",
-                            "result": result
+                            "result": result,
+                            "state": verification.get("state"),
+                            "attributes": verification.get("attributes", {}),
+                            "verification": verification
                         }
                     else:
                         error_text = await resp.text()
@@ -345,7 +420,8 @@ class HomeAssistantService:
         # Resolve entity if it's not a full entity_id
         resolved_entity = entity_id
         if '.' not in entity_id:
-            resolved_entity = await self.resolve_entity(entity_id)
+            preferred_domains = self._infer_preferred_domains(entity_id, for_query=True)
+            resolved_entity = await self.resolve_entity(entity_id, preferred_domains=preferred_domains)
             if not resolved_entity:
                 return {
                     "success": False,
@@ -506,7 +582,8 @@ class HomeAssistantService:
                                 "entity_id": e.get("entity_id"),
                                 "state": e.get("state"),
                                 "friendly_name": e.get("attributes", {}).get("friendly_name"),
-                                "domain": e.get("entity_id", "").split(".")[0]
+                                "domain": e.get("entity_id", "").split(".")[0],
+                                "attributes": e.get("attributes", {})
                             }
                             for e in filtered
                         ]
@@ -575,13 +652,21 @@ class HomeAssistantService:
 
             if friendly_name and entity_id:
                 # Store both exact match and lowercase
-                self._friendly_name_map[friendly_name.lower()] = entity_id
-                self._friendly_name_map[friendly_name] = entity_id
+                for key in {friendly_name, friendly_name.lower()}:
+                    if key not in self._friendly_name_map:
+                        self._friendly_name_map[key] = []
+                    if entity_id not in self._friendly_name_map[key]:
+                        self._friendly_name_map[key].append(entity_id)
 
         logger.info(f"✅ Loaded {len(entities)} entities ({len(self._friendly_name_map)} name mappings)")
         return True
 
-    async def resolve_entity(self, natural_query: str, domain: Optional[str] = None) -> Optional[str]:
+    async def resolve_entity(
+        self,
+        natural_query: str,
+        domain: Optional[str] = None,
+        preferred_domains: Optional[List[str]] = None
+    ) -> Optional[str]:
         """
         Resolve natural language query to entity ID.
 
@@ -625,8 +710,8 @@ class HomeAssistantService:
 
         # 1. Exact friendly name match
         if query_lower in self._friendly_name_map:
-            entity_id = self._friendly_name_map[query_lower]
-            if not domain or entity_id.startswith(f"{domain}."):
+            entity_id = self._select_entity(self._friendly_name_map[query_lower], domain, preferred_domains)
+            if entity_id:
                 logger.info(f"✓ Exact match: '{natural_query}' -> {entity_id}")
                 return entity_id
 
@@ -636,15 +721,15 @@ class HomeAssistantService:
 
         if matches:
             best_match = matches[0]
-            entity_id = self._friendly_name_map[best_match]
-
-            if not domain or entity_id.startswith(f"{domain}."):
+            entity_id = self._select_entity(self._friendly_name_map[best_match], domain, preferred_domains)
+            if entity_id:
                 logger.info(f"✓ Fuzzy match: '{natural_query}' -> {entity_id} (via '{best_match}')")
                 return entity_id
 
         # 3. Partial match in entity_id itself
         query_clean = re.sub(r'[^a-z0-9_]', '', query_lower)
 
+        candidates = []
         for entity in self._entities_cache:
             entity_id = entity.get("entity_id", "")
 
@@ -655,11 +740,57 @@ class HomeAssistantService:
             # Check if query appears in entity_id
             entity_id_clean = entity_id.split(".")[-1]  # Get part after domain
             if query_clean in entity_id_clean or entity_id_clean in query_clean:
-                logger.info(f"✓ Partial match: '{natural_query}' -> {entity_id}")
-                return entity_id
+                candidates.append(entity_id)
+
+        entity_id = self._select_entity(candidates, domain, preferred_domains)
+        if entity_id:
+            logger.info(f"✓ Partial match: '{natural_query}' -> {entity_id}")
+            return entity_id
 
         # 4. No match found
         logger.warning(f"❌ No entity found for: '{natural_query}'" + (f" (domain={domain})" if domain else ""))
+        return None
+
+    def _select_entity(
+        self,
+        candidates: List[str],
+        domain: Optional[str],
+        preferred_domains: Optional[List[str]]
+    ) -> Optional[str]:
+        """Pick best entity based on domain filters and preferences."""
+        if not candidates:
+            return None
+
+        if domain:
+            for candidate in candidates:
+                if candidate.startswith(f"{domain}."):
+                    return candidate
+            return None
+
+        if preferred_domains:
+            for pref_domain in preferred_domains:
+                for candidate in candidates:
+                    if candidate.startswith(f"{pref_domain}."):
+                        return candidate
+
+        return candidates[0]
+
+    def _infer_preferred_domains(self, text: str, for_query: bool) -> Optional[List[str]]:
+        """Infer preferred domains based on keywords."""
+        text_lower = text.lower()
+
+        if any(token in text_lower for token in ["temperatur", "heizung", "thermostat", "klima", "warm", "kühl", "kalt"]):
+            return ["climate", "sensor"]
+        if any(token in text_lower for token in ["feuchtigkeit", "luftfeuchtigkeit"]):
+            return ["sensor", "climate"]
+        if any(token in text_lower for token in ["helligkeit", "licht", "lampe", "beleuchtung"]):
+            return ["light"]
+        if any(token in text_lower for token in ["steckdose", "schalter", "kaffeemaschine", "switch"]):
+            return ["switch"]
+
+        if for_query:
+            return ["light", "switch", "sensor", "climate", "binary_sensor", "cover", "media_player"]
+
         return None
 
 

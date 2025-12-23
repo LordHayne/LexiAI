@@ -51,12 +51,21 @@ class TestDeviceControl:
     @pytest.mark.asyncio
     async def test_control_device_turn_on_success(self, ha_service):
         """Test successful turn_on command."""
-        with patch('aiohttp.ClientSession.post') as mock_post:
+        with patch('aiohttp.ClientSession.post') as mock_post, \
+             patch('aiohttp.ClientSession.get') as mock_get:
             # Mock successful response
             mock_response = AsyncMock()
             mock_response.status = 200
             mock_response.json = AsyncMock(return_value=[{"entity_id": "light.wohnzimmer", "state": "on"}])
             mock_post.return_value.__aenter__.return_value = mock_response
+            mock_state_response = AsyncMock()
+            mock_state_response.status = 200
+            mock_state_response.json = AsyncMock(return_value={
+                "entity_id": "light.wohnzimmer",
+                "state": "on",
+                "attributes": {"brightness": 255}
+            })
+            mock_get.return_value.__aenter__.return_value = mock_state_response
 
             result = await ha_service.control_device("light.wohnzimmer", "turn_on")
 
@@ -68,11 +77,20 @@ class TestDeviceControl:
     @pytest.mark.asyncio
     async def test_control_device_set_brightness(self, ha_service):
         """Test setting brightness with value."""
-        with patch('aiohttp.ClientSession.post') as mock_post:
+        with patch('aiohttp.ClientSession.post') as mock_post, \
+             patch('aiohttp.ClientSession.get') as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 200
             mock_response.json = AsyncMock(return_value=[{}])
             mock_post.return_value.__aenter__.return_value = mock_response
+            mock_state_response = AsyncMock()
+            mock_state_response.status = 200
+            mock_state_response.json = AsyncMock(return_value={
+                "entity_id": "light.wohnzimmer",
+                "state": "on",
+                "attributes": {"brightness": 128}
+            })
+            mock_get.return_value.__aenter__.return_value = mock_state_response
 
             result = await ha_service.control_device("light.wohnzimmer", "set_brightness", 128)
 
@@ -87,11 +105,20 @@ class TestDeviceControl:
     @pytest.mark.asyncio
     async def test_control_device_set_temperature(self, ha_service):
         """Test setting temperature."""
-        with patch('aiohttp.ClientSession.post') as mock_post:
+        with patch('aiohttp.ClientSession.post') as mock_post, \
+             patch('aiohttp.ClientSession.get') as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 200
             mock_response.json = AsyncMock(return_value=[{}])
             mock_post.return_value.__aenter__.return_value = mock_response
+            mock_state_response = AsyncMock()
+            mock_state_response.status = 200
+            mock_state_response.json = AsyncMock(return_value={
+                "entity_id": "climate.heizung",
+                "state": "heat",
+                "attributes": {"temperature": 22.5}
+            })
+            mock_get.return_value.__aenter__.return_value = mock_state_response
 
             result = await ha_service.control_device("climate.heizung", "set_temperature", 22.5)
 
