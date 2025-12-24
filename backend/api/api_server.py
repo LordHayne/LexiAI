@@ -73,6 +73,7 @@ from backend.api.v1.routes.cache import router as cache_router
 from backend.api.v1.routes.users import router as users_router
 from backend.api.v1.routes.auth import router as auth_router  # JWT Authentication
 from backend.api.v1.routes.profile import router as profile_router  # User Profile Management
+from backend.api.v1.routes.home_assistant import router as home_assistant_router
 
 
 
@@ -547,6 +548,7 @@ def register_routes():
         (knowledge_gaps_router, "/v1", "Knowledge Gaps endpoints"),
         (cache_router, "/v1/cache", "Cache endpoints"),
         (profile_router, "/v1", "User Profile endpoints"),
+        (home_assistant_router, "/v1", "Home Assistant event endpoints"),
         (users_router, "", "User management endpoints"),  # No prefix, already has /v1/users
         (feedback_router, "", "Feedback endpoints"),  # No prefix, already in router
         (audio_router, "", "Audio endpoints")

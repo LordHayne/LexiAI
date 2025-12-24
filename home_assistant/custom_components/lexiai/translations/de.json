@@ -1,0 +1,39 @@
+{
+  "title": "LexiAI",
+  "config": {
+    "step": {
+      "user": {
+        "title": "LexiAI verbinden",
+        "description": "Konfiguriere die Verbindung zum LexiAI Backend.",
+        "data": {
+          "base_url": "Base URL",
+          "api_key": "API Key",
+          "domains": "Domains senden",
+          "batch_interval": "Batch-Intervall (Sekunden)",
+          "batch_size": "Max. Events pro Batch",
+          "timeout": "Request Timeout (Sekunden)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung fehlgeschlagen",
+      "invalid_url": "Ungueltige URL"
+    },
+    "abort": {
+      "single_instance_allowed": "Es ist nur eine LexiAI Instanz erlaubt."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "LexiAI Optionen",
+        "data": {
+          "domains": "Domains senden",
+          "batch_interval": "Batch-Intervall (Sekunden)",
+          "batch_size": "Max. Events pro Batch",
+          "timeout": "Request Timeout (Sekunden)"
+        }
+      }
+    }
+  }
+}

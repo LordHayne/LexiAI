@@ -119,6 +119,48 @@ class HomeAssistantService:
         else:
             self._state_cache.clear()
 
+    def ingest_state_event(self, event: Dict[str, Any]) -> bool:
+        """
+        Update local caches from a Home Assistant state_changed event.
+
+        Args:
+            event: Dict with entity_id, state, attributes, last_changed, last_updated
+        """
+        entity_id = event.get("entity_id")
+        if not entity_id:
+            return False
+
+        state = event.get("state")
+        attributes = event.get("attributes") or {}
+        result = {
+            "success": True,
+            "entity_id": entity_id,
+            "state": state,
+            "attributes": attributes,
+            "last_changed": event.get("last_changed"),
+            "last_updated": event.get("last_updated"),
+        }
+
+        self._state_cache[entity_id] = (result, asyncio.get_event_loop().time())
+
+        friendly_name = attributes.get("friendly_name")
+        if friendly_name:
+            for key in {friendly_name, friendly_name.lower()}:
+                self._friendly_name_map.setdefault(key, [])
+                if entity_id not in self._friendly_name_map[key]:
+                    self._friendly_name_map[key].append(entity_id)
+
+        if self._entities_cache:
+            for entity in self._entities_cache:
+                if entity.get("entity_id") == entity_id:
+                    entity["state"] = state
+                    entity["attributes"] = attributes
+                    if friendly_name:
+                        entity["friendly_name"] = friendly_name
+                    break
+
+        return True
+
     async def _verify_state(
         self,
         entity_id: str,
