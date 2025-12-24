@@ -19,9 +19,6 @@ Lokales Assistenzsystem mit Chat-API, Memory-System, optionaler Tool-Integration
 - `docs/` Zentrale Dokumentation
 - Entrypoints: `main.py` (CLI), `start_middleware.py` (API)
 
-## Branches
-- `main` stabiler Stand fuer Releases
-- `dev` laufende Entwicklung und Integration
 
 ## Quickstart MacOS
 Easy Setup:
