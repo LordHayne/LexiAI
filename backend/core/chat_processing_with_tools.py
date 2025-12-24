@@ -258,13 +258,34 @@ async def process_chat_with_tools(
 
                 # Extract room/device name (simple pattern matching)
                 rooms = ["wohnzimmer", "badezimmer", "küche", "schlafzimmer", "büro", "flur", "keller"]
+                device_hint = None
+                if any(token in message_lower for token in ["licht", "lampe"]):
+                    device_hint = "licht"
+                elif any(token in message_lower for token in ["heizung", "thermostat"]):
+                    device_hint = "heizung"
+                elif any(token in message_lower for token in ["steckdose", "stecker", "schalter", "switch"]):
+                    device_hint = "schalter"
+                elif any(token in message_lower for token in ["rollo", "jalousie", "rolladen", "vorhang", "abdeckung", "cover"]):
+                    device_hint = "rollo"
+                elif any(token in message_lower for token in ["tv", "fernseher", "radio", "musik", "media", "player"]):
+                    device_hint = "media"
+                elif any(token in message_lower for token in ["luefter", "lüfter", "ventilator"]):
+                    device_hint = "luefter"
+                elif any(token in message_lower for token in ["schloss", "tuer", "tür", "lock"]):
+                    device_hint = "schloss"
+                elif any(token in message_lower for token in ["szene", "scene"]):
+                    device_hint = "szene"
                 entity_id = None
                 confidence = 0  # Track confidence level
 
                 for room in rooms:
                     if room in message_lower:
-                        entity_id = room
-                        confidence = 100  # High confidence - exact match
+                        if device_hint:
+                            entity_id = f"{room} {device_hint}"
+                            confidence = 95
+                        else:
+                            entity_id = room
+                            confidence = 100  # High confidence - exact match
                         break
 
                 if not entity_id:
@@ -288,13 +309,34 @@ async def process_chat_with_tools(
             else:  # SMART_HOME_QUERY
                 # Extract entity for query
                 rooms = ["wohnzimmer", "badezimmer", "küche", "schlafzimmer", "büro", "flur", "keller"]
+                device_hint = None
+                if any(token in message_lower for token in ["licht", "lampe"]):
+                    device_hint = "licht"
+                elif any(token in message_lower for token in ["heizung", "thermostat"]):
+                    device_hint = "heizung"
+                elif any(token in message_lower for token in ["steckdose", "stecker", "schalter", "switch"]):
+                    device_hint = "schalter"
+                elif any(token in message_lower for token in ["rollo", "jalousie", "rolladen", "vorhang", "abdeckung", "cover"]):
+                    device_hint = "rollo"
+                elif any(token in message_lower for token in ["tv", "fernseher", "radio", "musik", "media", "player"]):
+                    device_hint = "media"
+                elif any(token in message_lower for token in ["luefter", "lüfter", "ventilator"]):
+                    device_hint = "luefter"
+                elif any(token in message_lower for token in ["schloss", "tuer", "tür", "lock"]):
+                    device_hint = "schloss"
+                elif any(token in message_lower for token in ["szene", "scene"]):
+                    device_hint = "szene"
                 entity_id = None
                 confidence = 0
 
                 for room in rooms:
                     if room in message_lower:
-                        entity_id = room
-                        confidence = 100
+                        if device_hint:
+                            entity_id = f"{room} {device_hint}"
+                            confidence = 95
+                        else:
+                            entity_id = room
+                            confidence = 100
                         break
 
                 if not entity_id:
@@ -339,15 +381,26 @@ async def process_chat_with_tools(
                     "params": {"script": pending_script, "apply": True}
                 }]
             else:
-                logger.info(f"🤖 Phase 3: Single-step execution - LLM selecting tools...")
-                tool_calls = await select_tools(
-                    message=clean_message,
-                    context_docs=relevant_docs,
-                    chat_client=chat_client,
+                from backend.core.web_search_integration import should_perform_web_search
+
+                should_search, reason = should_perform_web_search(
+                    clean_message,
+                    relevant_docs,
                     language=language
                 )
 
-                logger.info(f"⚙️ Executing {len(tool_calls)} tools...")
+                if should_search:
+                    tool_calls = [{
+                        "tool": "web_search",
+                        "params": {
+                            "query": clean_message,
+                            "reason": reason or "Heuristic web search trigger"
+                        }
+                    }]
+                    logger.info(f"⚙️ Executing {len(tool_calls)} tools (heuristic)")
+                else:
+                    tool_calls = []
+                    logger.info("⚡ No tools selected (heuristic) - answering directly")
         else:
             logger.info(f"⚡ Phase 3: Fast-path - Direct LLM response (no tools needed)")
             tool_calls = []
@@ -403,8 +456,30 @@ async def process_chat_with_tools(
                     "turn_id": None
                 }
 
-        # Phase 4: Build answer with tool results (ONLY for single-step)
-        logger.info(f"📝 Phase 4: Building answer with tool results...")
+    # Phase 4: Build answer with tool results (ONLY for single-step)
+    logger.info(f"📝 Phase 4: Building answer with tool results...")
+
+    # If memory retrieval fell back to low-confidence only, ask a short clarification
+    if relevant_docs:
+        try:
+            low_confidence_only = all(
+                getattr(doc, "metadata", {}).get("low_confidence") for doc in relevant_docs
+            )
+        except Exception:
+            low_confidence_only = False
+
+        if low_confidence_only:
+            if language == "de":
+                clarification = "Ich bin mir nicht sicher, ob ich dich richtig verstanden habe. Was genau meinst du?"
+            else:
+                clarification = "I'm not fully sure I understood you. What exactly do you mean?"
+            return {
+                "response": clarification,
+                "relevant_memory": relevant_docs,
+                "final": memory_used,
+                "source": "low_confidence_clarification",
+                "turn_id": None
+            }
 
         # ⚠️ CRITICAL: Check for Home Assistant tool failures BEFORE asking LLM
         ha_tools_used = any(r.tool_name in ["home_assistant_control", "home_assistant_query"] for r in tool_results)

@@ -987,6 +987,7 @@
             sendBtn.disabled = true;
 
             try {
+                const streamingEnabled = true;
                 // Call chat API
                 const response = await userFetch(`${API_BASE_URL}/ui/chat`, {
                     method: 'POST',
@@ -995,7 +996,8 @@
                     }),
                     body: JSON.stringify({
                         message: message,
-                        session_id: activeSessionId
+                        session_id: activeSessionId,
+                        stream: streamingEnabled
                     })
                 });
 
@@ -1003,17 +1005,70 @@
                     throw new Error('Network response was not ok');
                 }
 
-                const data = await response.json();
+                const contentType = response.headers.get('content-type') || '';
+                if (streamingEnabled && contentType.includes('text/event-stream')) {
+                    // Hide typing indicator and start streaming
+                    typingIndicator.classList.remove('show');
 
-                // Hide typing indicator
-                typingIndicator.classList.remove('show');
+                    const streamTarget = addMessage('assistant', '');
+                    const contentDiv = streamTarget.contentDiv;
+                    const messageDiv = streamTarget.messageDiv;
+                    let responseText = '';
+                    let finalTurnId = null;
 
-                // Add assistant response with feedback buttons (only if turn_id provided)
-                const turnId = data.turn_id || null;
-                addMessage('assistant', data.response || data.message, turnId);
-                messageCount++;
-                updateStats();
-                await loadSessions();
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop() || '';
+
+                        for (const line of lines) {
+                            if (!line.startsWith('data: ')) continue;
+                            const jsonStr = line.slice(6);
+                            if (!jsonStr) continue;
+                            try {
+                                const data = JSON.parse(jsonStr);
+                                if (data.chunk !== undefined) {
+                                    responseText += data.chunk;
+                                    contentDiv.textContent = responseText;
+                                } else if (data.type === 'content' && data.content) {
+                                    responseText += data.content;
+                                    contentDiv.textContent = responseText;
+                                } else if (data.final_chunk) {
+                                    finalTurnId = data.turn_id || null;
+                                }
+                            } catch (e) {
+                                console.warn('Failed to parse SSE data:', line, e);
+                            }
+                        }
+                    }
+
+                    if (finalTurnId) {
+                        addFeedbackButtons(messageDiv, finalTurnId);
+                    }
+
+                    messageCount++;
+                    updateStats();
+                    await loadSessions();
+                } else {
+                    const data = await response.json();
+
+                    // Hide typing indicator
+                    typingIndicator.classList.remove('show');
+
+                    // Add assistant response with feedback buttons (only if turn_id provided)
+                    const turnId = data.turn_id || null;
+                    addMessage('assistant', data.response || data.message, turnId);
+                    messageCount++;
+                    updateStats();
+                    await loadSessions();
+                }
 
             } catch (error) {
                 console.error('Error:', error);
@@ -1048,23 +1103,29 @@
 
             // Add feedback buttons for assistant messages
             if (type === 'assistant' && turnId) {
-                const feedbackDiv = document.createElement('div');
-                feedbackDiv.className = 'feedback-buttons';
-
-                const thumbsUpBtn = createFeedbackButton('👍', 'thumbs-up', turnId, messageDiv);
-                const thumbsDownBtn = createFeedbackButton('👎', 'thumbs-down', turnId, messageDiv);
-                const correctBtn = createFeedbackButton('✏️', 'correct', turnId, messageDiv);
-
-                feedbackDiv.appendChild(thumbsUpBtn);
-                feedbackDiv.appendChild(thumbsDownBtn);
-                feedbackDiv.appendChild(correctBtn);
-                messageDiv.appendChild(feedbackDiv);
+                addFeedbackButtons(messageDiv, turnId);
             }
 
             chatMessages.appendChild(messageDiv);
             if (shouldScroll) {
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             }
+
+            return { messageDiv, contentDiv, timestamp };
+        }
+
+        function addFeedbackButtons(messageDiv, turnId) {
+            const feedbackDiv = document.createElement('div');
+            feedbackDiv.className = 'feedback-buttons';
+
+            const thumbsUpBtn = createFeedbackButton('👍', 'thumbs-up', turnId, messageDiv);
+            const thumbsDownBtn = createFeedbackButton('👎', 'thumbs-down', turnId, messageDiv);
+            const correctBtn = createFeedbackButton('✏️', 'correct', turnId, messageDiv);
+
+            feedbackDiv.appendChild(thumbsUpBtn);
+            feedbackDiv.appendChild(thumbsDownBtn);
+            feedbackDiv.appendChild(correctBtn);
+            messageDiv.appendChild(feedbackDiv);
         }
 
         function createFeedbackButton(emoji, type, turnId, messageDiv) {

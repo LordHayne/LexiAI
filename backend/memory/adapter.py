@@ -5,6 +5,7 @@ This module provides the main interface for storing and retrieving memories,
 with proper data model handling, validation, and caching.
 """
 import logging
+import os
 import uuid
 import datetime
 import json
@@ -36,6 +37,7 @@ class MemoryConfig:
     RETRIEVAL_OVERSELECTION_FACTOR = 2
     CORRECTION_BOOST_FACTOR = 1.5
     MAX_STATS_ENTRIES = 10000  # Use scroll, not similarity search
+    MAX_STATS_DAYS = 180
     DEFAULT_RETRIEVAL_LIMIT = 10
     MAX_RETRIEVAL_LIMIT = 100
     MAX_CONTENT_LENGTH = 50000  # 50KB
@@ -219,16 +221,40 @@ def get_detailed_memory_stats(user_id: str) -> Dict[str, Any]:
 
         # Use scroll instead of similarity search for efficiency
         if hasattr(vectorstore, 'client'):
-            scroll_result = vectorstore.client.scroll(
-                collection_name=MiddlewareConfig.get_memory_collection(),
-                scroll_filter={
-                    "must": [{"key": "user_id", "match": {"value": user_id}}]
-                },
-                with_payload=True,
-                limit=MemoryConfig.MAX_STATS_ENTRIES
-            )
+            try:
+                cutoff_days = int(os.environ.get("LEXI_STATS_DAYS", str(MemoryConfig.MAX_STATS_DAYS)))
+            except (TypeError, ValueError):
+                cutoff_days = MemoryConfig.MAX_STATS_DAYS
+            must_filters = [{"key": "user_id", "match": {"value": user_id}}]
+            if cutoff_days > 0:
+                cutoff_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=cutoff_days)
+                cutoff_ms = int(cutoff_dt.timestamp() * 1000)
+                must_filters.append({"key": "timestamp_ms", "range": {"gte": cutoff_ms}})
+
+            try:
+                scroll_result = vectorstore.client.scroll(
+                    collection_name=MiddlewareConfig.get_memory_collection(),
+                    scroll_filter={"must": must_filters},
+                    with_payload=True,
+                    limit=MemoryConfig.MAX_STATS_ENTRIES
+                )
+            except Exception:
+                scroll_result = vectorstore.client.scroll(
+                    collection_name=MiddlewareConfig.get_memory_collection(),
+                    scroll_filter={"must": [{"key": "user_id", "match": {"value": user_id}}]},
+                    with_payload=True,
+                    limit=MemoryConfig.MAX_STATS_ENTRIES
+                )
 
             points = scroll_result[0] if isinstance(scroll_result, tuple) else scroll_result.points
+            if not points and cutoff_days > 0:
+                scroll_result = vectorstore.client.scroll(
+                    collection_name=MiddlewareConfig.get_memory_collection(),
+                    scroll_filter={"must": [{"key": "user_id", "match": {"value": user_id}}]},
+                    with_payload=True,
+                    limit=MemoryConfig.MAX_STATS_ENTRIES
+                )
+                points = scroll_result[0] if isinstance(scroll_result, tuple) else scroll_result.points
         else:
             # Fallback to similarity search if scroll not available
             search_filter = {"filter": {"must": [{"key": "user_id", "match": {"value": user_id}}]}}
@@ -729,14 +755,40 @@ def get_memory_stats_from_qdrant(user_id: str = "default") -> Dict[str, int]:
         vectorstore = bundle.vectorstore
 
         if hasattr(vectorstore, 'client'):
-            search_filter = {"must": [{"key": "user_id", "match": {"value": user_id}}]}
-            scroll_result = vectorstore.client.scroll(
-                collection_name=MiddlewareConfig.get_memory_collection(),
-                scroll_filter=search_filter,
-                with_payload=True,
-                limit=1000
-            )
+            try:
+                cutoff_days = int(os.environ.get("LEXI_STATS_DAYS", str(MemoryConfig.MAX_STATS_DAYS)))
+            except (TypeError, ValueError):
+                cutoff_days = MemoryConfig.MAX_STATS_DAYS
+            must_filters = [{"key": "user_id", "match": {"value": user_id}}]
+            if cutoff_days > 0:
+                cutoff_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=cutoff_days)
+                cutoff_ms = int(cutoff_dt.timestamp() * 1000)
+                must_filters.append({"key": "timestamp_ms", "range": {"gte": cutoff_ms}})
+
+            search_filter = {"must": must_filters}
+            try:
+                scroll_result = vectorstore.client.scroll(
+                    collection_name=MiddlewareConfig.get_memory_collection(),
+                    scroll_filter=search_filter,
+                    with_payload=True,
+                    limit=1000
+                )
+            except Exception:
+                scroll_result = vectorstore.client.scroll(
+                    collection_name=MiddlewareConfig.get_memory_collection(),
+                    scroll_filter={"must": [{"key": "user_id", "match": {"value": user_id}}]},
+                    with_payload=True,
+                    limit=1000
+                )
             points = scroll_result.points if hasattr(scroll_result, "points") else scroll_result.get("points", [])
+            if not points and cutoff_days > 0:
+                scroll_result = vectorstore.client.scroll(
+                    collection_name=MiddlewareConfig.get_memory_collection(),
+                    scroll_filter={"must": [{"key": "user_id", "match": {"value": user_id}}]},
+                    with_payload=True,
+                    limit=1000
+                )
+                points = scroll_result.points if hasattr(scroll_result, "points") else scroll_result.get("points", [])
 
             category_counts = {}
             for point in points:

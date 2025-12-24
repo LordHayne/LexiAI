@@ -27,8 +27,9 @@ Verwendung:
 """
 
 from typing import List, Dict, Optional
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 import logging
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -177,24 +178,45 @@ class MemorySynthesizer:
         Returns:
             Liste von MemoryEntry Objekten
         """
-        # Nutze scroll für alle Entries
+        # Nutze scroll für alle Entries (begrenzt auf recent)
         all_entries = []
         offset = None
+        cutoff_days = int(os.environ.get("LEXI_MEMORY_SYNTHESIS_DAYS", "60"))
+        cutoff_ms = None
+        if cutoff_days > 0:
+            cutoff_dt = datetime.now(UTC) - timedelta(days=cutoff_days)
+            cutoff_ms = int(cutoff_dt.timestamp() * 1000)
+
+        fallback_without_filter = False
 
         while True:
             # Scroll durch Collection
-            results = self.vectorstore.client.scroll(
-                collection_name=self.vectorstore.collection,
-                scroll_filter=None,  # Alle Entries
-                limit=100,
-                offset=offset,
-                with_payload=True,
-                with_vectors=True
-            )
+            try:
+                results = self.vectorstore.client.scroll(
+                    collection_name=self.vectorstore.collection,
+                    scroll_filter={"must": [{"key": "timestamp_ms", "range": {"gte": cutoff_ms}}]} if cutoff_ms else None,
+                    limit=100,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=True
+                )
+            except Exception:
+                results = self.vectorstore.client.scroll(
+                    collection_name=self.vectorstore.collection,
+                    scroll_filter=None,
+                    limit=100,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=True
+                )
 
             points, next_offset = results
 
             if not points:
+                if cutoff_ms and not fallback_without_filter and offset is None:
+                    fallback_without_filter = True
+                    cutoff_ms = None
+                    continue
                 break
 
             # Konvertiere zu MemoryEntry

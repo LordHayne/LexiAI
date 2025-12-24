@@ -1172,6 +1172,16 @@
                             <input type="password" id="api-key" name="api_key" placeholder="API-Schlüssel für Authentifizierung">
                             <div class="form-hint">Wird für geschützte API-Endpunkte benötigt</div>
                         </div>
+                        <div class="toggle-group">
+                            <div>
+                                <div class="toggle-label">API-Key Authentifizierung aktiv</div>
+                                <div class="toggle-description">Empfohlen für Produktion, aus in Entwicklung</div>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="api-key-enabled" name="api_key_enabled">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
                         <div class="form-group">
                             <label for="tavily-api-key">Tavily API-Schlüssel:</label>
                             <input type="password" id="tavily-api-key" name="tavily_api_key" placeholder="Tavily API-Key für Web-Suche">
@@ -1497,6 +1507,8 @@
                 setInputValue('ha-token', config.ha_token);
                 setInputValue('system-prompt', config.system_prompt);
                 setInputValue('audit-log-path', config.audit_log_path);
+                const apiKeyEnabledEl = document.getElementById('api-key-enabled');
+                if (apiKeyEnabledEl) apiKeyEnabledEl.checked = config.api_key_enabled ?? true;
 
                 // Update overview with null-safety checks
                 const setTextContent = (id, value) => {
@@ -1657,6 +1669,7 @@
                 qdrant_host: document.getElementById('qdrant-host').value,
                 qdrant_port: parseInt(document.getElementById('qdrant-port').value),
                 api_key: document.getElementById('api-key').value,
+                api_key_enabled: document.getElementById('api-key-enabled').checked,
                 tavily_api_key: document.getElementById('tavily-api-key').value,
                 system_prompt: document.getElementById('system-prompt').value,
                 audit_log_path: document.getElementById('audit-log-path').value,
@@ -1684,7 +1697,8 @@
 
             // Get current API key for authentication
             // Use the loaded API key, not the form field (in case user is changing the API key)
-            const authApiKey = loadedApiKey || 'dev_api_key_change_me_in_production';
+            const formApiKey = document.getElementById('api-key')?.value?.trim();
+            const authApiKey = loadedApiKey || formApiKey || 'dev_api_key_change_me_in_production';
             debug.log('🔐 Using API Key for auth: ***');
 
             try {

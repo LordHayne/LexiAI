@@ -56,6 +56,22 @@ FACTUAL_KEYWORDS = [
     r"\b(warum|why|wieso|weshalb)\b",
 ]
 
+# Company/organization intent patterns to force web search
+COMPANY_QUERY_PATTERNS = {
+    "de": [
+        r"\b(firma|unternehmen|betrieb|geschäft|organisation|verein|institut|agentur)\b",
+        r"\b(gmbh|ag|ug|kg|gbr|e\.v\.|e\.v)\b",
+        r"\bwas macht\b.*\b(firma|unternehmen|betrieb|geschäft)\b",
+        r"\b(tätigkeitsbereich|geschäftsfeld|branche|produkte|dienstleistungen)\b",
+    ],
+    "en": [
+        r"\b(company|business|organization|organisation|agency|institute|association)\b",
+        r"\b(inc|ltd|llc|corp|corporation|gmbh|ag)\b",
+        r"\bwhat does\b.*\b(company|business|organization|organisation)\b",
+        r"\b(industry|business area|products|services)\b",
+    ],
+}
+
 
 def should_perform_web_search(message: str, relevant_docs: List[Any], language: str = "de") -> Tuple[bool, Optional[str]]:
     """
@@ -83,6 +99,12 @@ def should_perform_web_search(message: str, relevant_docs: List[Any], language: 
     for pattern in explicit_search_patterns:
         if re.search(pattern, message_lower):
             return True, "Explicit web search request"
+
+    # Force web search for company/organization questions
+    company_patterns = COMPANY_QUERY_PATTERNS.get(language, COMPANY_QUERY_PATTERNS["de"])
+    for pattern in company_patterns:
+        if re.search(pattern, message_lower):
+            return True, f"Company/organization query: {pattern[:50]}"
 
     # Check for current/real-time information triggers
     triggers = WEB_SEARCH_TRIGGERS.get(language, WEB_SEARCH_TRIGGERS["de"])

@@ -9,9 +9,28 @@ Extracted from chat_processing_with_tools.py (Lines 252-680)
 """
 
 import logging
+import os
 from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+
+def _get_memory_threshold() -> float:
+    value = os.environ.get("LEXI_MEMORY_THRESHOLD", "0.8")
+    try:
+        threshold = float(value)
+    except (TypeError, ValueError):
+        threshold = 0.8
+    return min(max(threshold, 0.0), 1.0)
+
+
+def _get_fact_min_confidence() -> float:
+    value = os.environ.get("LEXI_FACT_MIN_CONFIDENCE", "0.6")
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        confidence = 0.6
+    return min(max(confidence, 0.0), 1.0)
 
 
 def format_context_summary(relevant_docs: List) -> str:
@@ -28,10 +47,30 @@ def format_context_summary(relevant_docs: List) -> str:
     """
     context_summary = ""
     if relevant_docs:
+        memory_threshold = _get_memory_threshold()
+        fact_min_confidence = _get_fact_min_confidence()
         context_summary = f"Memory context ({len(relevant_docs)} entries):\n"
         for i, doc in enumerate(relevant_docs, 1):
             content = getattr(doc, 'page_content', str(doc))
-            context_summary += f"{i}. {content[:200]}...\n"
+            metadata = getattr(doc, "metadata", {}) or {}
+            relevance = metadata.get("relevance")
+            confidence = metadata.get("confidence")
+            low_confidence = False
+
+            try:
+                if relevance is not None and float(relevance) < memory_threshold:
+                    low_confidence = True
+            except (TypeError, ValueError):
+                pass
+
+            try:
+                if confidence is not None and float(confidence) < fact_min_confidence:
+                    low_confidence = True
+            except (TypeError, ValueError):
+                pass
+
+            label = " [LOW_CONFIDENCE]" if low_confidence else ""
+            context_summary += f"{i}. {content[:200]}...{label}\n"
     return context_summary
 
 
@@ -122,6 +161,19 @@ def build_system_prompt(
     """
 
     greeting_rules = ""
+    low_confidence_hint = ""
+    if context_summary and "[LOW_CONFIDENCE]" in context_summary:
+        if language == "de":
+            low_confidence_hint = (
+                "\nWICHTIG: Einige Memory-Einträge sind als [LOW_CONFIDENCE] markiert. "
+                "Nutze diese nur vorsichtig und stelle eine Rückfrage, "
+                "wenn die Antwort sonst unsicher wäre.\n"
+            )
+        else:
+            low_confidence_hint = (
+                "\nIMPORTANT: Some memory entries are marked [LOW_CONFIDENCE]. "
+                "Use them cautiously and ask a follow-up if the answer would be uncertain otherwise.\n"
+            )
 
     if language == "de":
         # German prompts
@@ -146,6 +198,7 @@ KRITISCHE REGELN FÜR SMART HOME ANTWORTEN:
 
 Tool-Ergebnisse:
 {tools}
+{low_confidence_hint}
 
 Memory Kontext:
 {context}"""
@@ -164,6 +217,7 @@ REGELN FUER AUTOMATIONS-ANTWORTEN:
 
 Tool-Ergebnisse:
 {tools}
+{low_confidence_hint}
 
 Memory Kontext:
 {context}"""
@@ -187,7 +241,8 @@ Memory Kontext:
 {context}
 
 Tool-Ergebnisse:
-{tools}"""
+{tools}
+{low_confidence_hint}"""
 
         else:  # no_tools
             # Build greeting rules based on whether user has existing memories
@@ -235,7 +290,8 @@ REGELN FÜR FRAGEN (Memory Recall):
 - Vermeide Phrasen wie "in der Entwicklung" oder "als KI"
 
 Memory Kontext (frühere Gespräche):
-{context}"""
+{context}
+{low_confidence_hint}"""
 
     else:  # English
         if prompt_type == "tools_used":
@@ -260,7 +316,8 @@ Memory Context:
 {context}
 
 Tool Results:
-{tools}"""
+{tools}
+{low_confidence_hint}"""
 
         else:  # no_tools
             system_prompt = """You are Lexi, a helpful and friendly AI assistant with long-term memory.
@@ -283,7 +340,8 @@ IMPORTANT RULES FOR QUESTIONS:
 - NEVER invent information
 
 Memory Context (previous conversations):
-{context}"""
+{context}
+{low_confidence_hint}"""
 
     # Format the prompt with context and tools
     formatted_prompt = system_prompt.format(
@@ -291,7 +349,8 @@ Memory Context (previous conversations):
         tools=tool_context or "No tools were used",
         user_context=user_context,
         greeting_instruction=greeting_instruction,
-        greeting_rules=greeting_rules
+        greeting_rules=greeting_rules,
+        low_confidence_hint=low_confidence_hint
     )
 
     return formatted_prompt

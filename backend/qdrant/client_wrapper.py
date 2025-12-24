@@ -16,6 +16,16 @@ _client: Optional[QdrantClient] = None
 _client_lock = threading.Lock()
 
 
+def _parse_bool(value: Optional[str], default: bool = False) -> bool:
+    if value is None:
+        return default
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _get_upsert_wait_default() -> bool:
+    return _parse_bool(get_config_value("qdrant_upsert_wait", default="false"), default=False)
+
+
 def create_qdrant_client() -> QdrantClient:
     """
     Create Qdrant client with optimized connection settings.
@@ -90,6 +100,9 @@ client = QdrantClientProxy()
 @backoff.on_exception(backoff.expo, Exception, max_tries=3, jitter=None,
                       on_backoff=lambda d: logger.warning(f"Upsert retry {d['tries']}/3"))
 def safe_upsert(*args, **kwargs):
+    if "wait" not in kwargs:
+        kwargs = dict(kwargs)
+        kwargs["wait"] = _get_upsert_wait_default()
     return get_qdrant_client().upsert(*args, **kwargs)
 
 

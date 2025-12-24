@@ -59,7 +59,7 @@ class LexiAIConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         data_schema = vol.Schema(
             {
                 vol.Required(CONF_BASE_URL, default=DEFAULT_BASE_URL): str,
-                vol.Required(CONF_API_KEY): str,
+                vol.Optional(CONF_API_KEY, default=""): str,
                 vol.Optional(CONF_DOMAINS, default=DEFAULT_DOMAINS): cv.multi_select(DOMAIN_OPTIONS),
                 vol.Optional(CONF_BATCH_INTERVAL, default=DEFAULT_BATCH_INTERVAL): vol.Coerce(float),
                 vol.Optional(CONF_BATCH_SIZE, default=DEFAULT_BATCH_SIZE): vol.Coerce(int),

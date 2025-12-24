@@ -20,6 +20,7 @@ workers:
     batch_size: 1000           # Memories per batch
     min_group_size: 2          # Minimum duplicates to merge
     preserve_metadata_strategy: "merge"  # merge | newest | highest_relevance
+    recent_days: 90            # Only scan recent memories
     schedule: "0 2 * * *"      # Daily at 2:00 AM (cron format)
 
   # 2. Index Optimization Worker
@@ -42,6 +43,7 @@ workers:
     recency_boost_7d: 0.2      # Boost if used in last 7 days
     recency_boost_30d: 0.1     # Boost if used in last 30 days
     age_decay_rate: 0.01       # Decay rate per 30 days without use
+    recent_days: 90            # Only scan recent memories
     schedule: "0 */6 * * *"    # Every 6 hours
 
   # 4. Data Quality Worker
@@ -52,6 +54,7 @@ workers:
     auto_repair: true          # Automatically repair fixable issues
     quarantine_corrupted: true # Move unfixable issues to quarantine
     quarantine_collection: "lexi_memory_quarantine"
+    recent_days: 90            # Only scan recent memories
     schedule: "0 4 * * *"      # Daily at 4:00 AM
 
     # Validation checks

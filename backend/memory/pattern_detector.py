@@ -332,6 +332,7 @@ class PatternTracker:
         """Stellt sicher dass Patterns Collection existiert"""
         try:
             from backend.qdrant.client_wrapper import QdrantClient
+            from backend.qdrant.client_wrapper import safe_upsert
             client = self.vectorstore.client
 
             collections = client.get_collections().collections
@@ -359,7 +360,7 @@ class PatternTracker:
                 payload=pattern.to_dict()
             )
 
-            client.upsert(
+            safe_upsert(
                 collection_name=self.patterns_collection,
                 points=[point]
             )

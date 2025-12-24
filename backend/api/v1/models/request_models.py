@@ -140,6 +140,7 @@ class ConfigUpdateRequest(BaseModel):
     qdrant_host: Optional[str] = None
     qdrant_port: Optional[int] = None
     api_key: Optional[str] = None
+    api_key_enabled: Optional[bool] = None
     tavily_api_key: Optional[str] = None
     ha_url: Optional[str] = None
     ha_token: Optional[str] = None

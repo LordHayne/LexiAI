@@ -16,6 +16,7 @@ from backend.api.middleware.auth import verify_api_key
 from backend.config.feature_flags import FeatureFlags
 from backend.config.middleware_config import MiddlewareConfig
 from backend.config.persistence import ConfigPersistence
+from backend.config.security_config import SecurityConfig
 from backend.core.bootstrap import initialize_components, ConfigurationError
 
 # Setup logging
@@ -85,7 +86,8 @@ async def get_config():
             "rate_limit_enabled": MiddlewareConfig.get_rate_limit_enabled(),
             "tavily_api_key": MiddlewareConfig.get_tavily_api_key(),
             "ha_url": MiddlewareConfig.get_ha_url(),
-            "ha_token": MiddlewareConfig.get_ha_token() if MiddlewareConfig.get_ha_token() else ""
+            "ha_token": MiddlewareConfig.get_ha_token() if MiddlewareConfig.get_ha_token() else "",
+            "api_key_enabled": SecurityConfig.API_KEY_ENABLED
         }
 
         # ⬅️ Hier neu:
@@ -174,6 +176,7 @@ async def update_config(request: Request):
                 qdrant_host=request_data.get("qdrant_host"),
                 qdrant_port=request_data.get("qdrant_port"),
                 api_key=request_data.get("api_key"),
+                api_key_enabled=request_data.get("api_key_enabled"),
                 tavily_api_key=request_data.get("tavily_api_key"),
                 ha_url=request_data.get("ha_url"),
                 ha_token=request_data.get("ha_token"),
@@ -231,6 +234,13 @@ async def update_config(request: Request):
             ("qdrant_host", "LEXI_QDRANT_HOST", config_request.qdrant_host),
             ("qdrant_port", "LEXI_QDRANT_PORT", str(config_request.qdrant_port) if config_request.qdrant_port else None),
             ("api_key", "LEXI_API_KEY", config_request.api_key),
+            (
+                "api_key_enabled",
+                "LEXI_API_KEY_ENABLED",
+                "true" if config_request.api_key_enabled else "false"
+                if config_request.api_key_enabled is not None
+                else None
+            ),
             ("tavily_api_key", "TAVILY_API_KEY", config_request.tavily_api_key),
             ("ha_url", "LEXI_HA_URL", config_request.ha_url),
             ("ha_token", "LEXI_HA_TOKEN", config_request.ha_token),
@@ -242,6 +252,8 @@ async def update_config(request: Request):
                 logger.info(f"Updating {setting_name}")
                 os.environ[env_var] = value
                 updated_settings.append(setting_name)
+                if setting_name == "api_key_enabled":
+                    SecurityConfig.API_KEY_ENABLED = value == "true"
 
         # Update feedback settings
         if config_request.feedback_enabled is not None:
@@ -272,7 +284,12 @@ async def update_config(request: Request):
             "ha_url": config_request.ha_url or MiddlewareConfig.get_ha_url(),
             "ha_token": config_request.ha_token or MiddlewareConfig.get_ha_token(),
             "system_prompt": request_data.get("system_prompt", ""),
-            "features": config_request.features or FeatureFlags.get_all()
+            "features": config_request.features or FeatureFlags.get_all(),
+            "api_key_enabled": (
+                config_request.api_key_enabled
+                if config_request.api_key_enabled is not None
+                else SecurityConfig.API_KEY_ENABLED
+            )
         }
 
         persistence_success = ConfigPersistence.save_config(persist_config)

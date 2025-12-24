@@ -652,6 +652,32 @@ async def execute_tool(
                 else:
                     preferred_domains = ['light', 'switch', 'cover', 'lock', 'media_player', 'fan', 'climate']
 
+                entity_lower = entity_id_raw.lower()
+                if any(token in entity_lower for token in ["licht", "lampe"]):
+                    domain_hint = "light"
+                    preferred_domains = ["light", "switch", "cover", "lock", "media_player", "fan", "climate"]
+                elif any(token in entity_lower for token in ["heizung", "thermostat"]):
+                    domain_hint = "climate"
+                    preferred_domains = ["climate", "light", "switch", "cover", "lock", "media_player", "fan"]
+                elif any(token in entity_lower for token in ["steckdose", "stecker", "schalter", "switch"]):
+                    domain_hint = "switch"
+                    preferred_domains = ["switch", "light", "cover", "lock", "media_player", "fan", "climate"]
+                elif any(token in entity_lower for token in ["rollo", "jalousie", "rolladen", "vorhang", "abdeckung", "cover"]):
+                    domain_hint = "cover"
+                    preferred_domains = ["cover", "light", "switch", "lock", "media_player", "fan", "climate"]
+                elif any(token in entity_lower for token in ["tv", "fernseher", "radio", "musik", "media", "player"]):
+                    domain_hint = "media_player"
+                    preferred_domains = ["media_player", "light", "switch", "cover", "lock", "fan", "climate"]
+                elif any(token in entity_lower for token in ["luefter", "lüfter", "ventilator"]):
+                    domain_hint = "fan"
+                    preferred_domains = ["fan", "light", "switch", "cover", "lock", "media_player", "climate"]
+                elif any(token in entity_lower for token in ["schloss", "tuer", "tür", "lock"]):
+                    domain_hint = "lock"
+                    preferred_domains = ["lock", "light", "switch", "cover", "media_player", "fan", "climate"]
+                elif any(token in entity_lower for token in ["szene", "scene"]):
+                    domain_hint = "scene"
+                    preferred_domains = ["scene", "light", "switch", "cover", "lock", "media_player", "fan", "climate"]
+
                 logger.info(f"🔍 Resolving natural query: '{entity_id_raw}' (domain hint: {domain_hint})")
                 entity_id = await ha_service.resolve_entity(
                     entity_id_raw,

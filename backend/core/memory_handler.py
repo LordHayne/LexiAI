@@ -12,10 +12,234 @@ Extracted from chat_processing_with_tools.py (Lines 148-776)
 
 import asyncio
 import logging
+import os
+import re
 from typing import List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
+
+
+def _get_memory_threshold() -> float:
+    value = os.environ.get("LEXI_MEMORY_THRESHOLD", "0.8")
+    try:
+        threshold = float(value)
+    except (TypeError, ValueError):
+        threshold = 0.8
+    return min(max(threshold, 0.0), 1.0)
+
+
+def _get_fact_confidence() -> float:
+    value = os.environ.get("LEXI_FACT_CONFIDENCE", "0.85")
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        confidence = 0.85
+    return min(max(confidence, 0.0), 1.0)
+
+
+def _get_fact_min_confidence() -> float:
+    value = os.environ.get("LEXI_FACT_MIN_CONFIDENCE", "0.6")
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        confidence = 0.6
+    return min(max(confidence, 0.0), 1.0)
+
+
+def _get_fact_ttl_days() -> int:
+    value = os.environ.get("LEXI_FACT_TTL_DAYS", "365")
+    try:
+        days = int(value)
+    except (TypeError, ValueError):
+        days = 365
+    return max(days, 0)
+
+
+async def _supersede_existing_facts(
+    user_id: str,
+    fact_kind: str,
+    fact_category: Optional[str],
+    new_fact_id: str
+) -> None:
+    try:
+        from backend.core.component_cache import get_cached_components
+        from backend.qdrant.client_wrapper import safe_scroll
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+        bundle = get_cached_components()
+        vectorstore = bundle.vectorstore
+
+        must_filters = [
+            FieldCondition(key="user_id", match=MatchValue(value=user_id)),
+            FieldCondition(key="category", match=MatchValue(value="user_fact")),
+            FieldCondition(key="fact_kind", match=MatchValue(value=fact_kind)),
+        ]
+        if fact_category:
+            must_filters.append(FieldCondition(key="fact_category", match=MatchValue(value=fact_category)))
+
+        points, _next_offset = safe_scroll(
+            collection_name=vectorstore.collection,
+            scroll_filter=Filter(must=must_filters),
+            limit=50,
+            with_payload=True,
+            with_vectors=False
+        )
+
+        now = datetime.now(timezone.utc).isoformat()
+        for point in points:
+            if str(point.id) == str(new_fact_id):
+                continue
+            vectorstore.update_entry_metadata(
+                point.id,
+                {
+                    "superseded": True,
+                    "superseded_at": now,
+                    "superseded_by": str(new_fact_id),
+                    "fact_active": False
+                }
+            )
+    except Exception as e:
+        logger.warning(f"Failed to supersede existing facts: {e}")
+
+
+def _tokenize(text: str) -> List[str]:
+    tokens = []
+    for raw in (text or "").lower().split():
+        token = "".join(ch for ch in raw if ch.isalnum())
+        if len(token) >= 3:
+            tokens.append(token)
+    return tokens
+
+
+def _compute_overlap_score(query_tokens: List[str], doc_text: str) -> float:
+    if not query_tokens:
+        return 0.0
+    doc_tokens = set(_tokenize(doc_text))
+    if not doc_tokens:
+        return 0.0
+    overlap = sum(1 for t in query_tokens if t in doc_tokens)
+    return overlap / max(len(query_tokens), 1)
+
+
+def _bm25_like_score(query_tokens: List[str], doc_text: str, k1: float = 1.2, b: float = 0.75) -> float:
+    if not query_tokens:
+        return 0.0
+    doc_tokens = _tokenize(doc_text)
+    if not doc_tokens:
+        return 0.0
+
+    doc_len = len(doc_tokens)
+    avg_doc_len = 100.0  # rough constant to avoid extra corpus stats
+    term_counts = {}
+    for token in doc_tokens:
+        term_counts[token] = term_counts.get(token, 0) + 1
+
+    score = 0.0
+    for token in query_tokens:
+        tf = term_counts.get(token, 0)
+        if tf == 0:
+            continue
+        norm = tf * (k1 + 1) / (tf + k1 * (1 - b + b * (doc_len / avg_doc_len)))
+        score += norm
+
+    return score
+
+
+def _recency_boost(metadata: dict) -> float:
+    ts = metadata.get("timestamp")
+    if not ts:
+        return 0.0
+    try:
+        dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        age_days = (datetime.now(timezone.utc) - dt).total_seconds() / 86400
+    except Exception:
+        return 0.0
+
+    if age_days <= 7:
+        return 0.05
+    if age_days <= 30:
+        return 0.03
+    if age_days <= 90:
+        return 0.015
+    return 0.0
+
+
+def _rerank_memories(query: str, docs: List) -> List:
+    query_tokens = _tokenize(query)
+    if not docs or not query_tokens:
+        return docs
+
+    scored = []
+    for doc in docs:
+        content = getattr(doc, 'page_content', str(doc))
+        overlap = _compute_overlap_score(query_tokens, content)
+        bm25 = _bm25_like_score(query_tokens, content)
+        relevance = getattr(doc, "relevance", None)
+        if relevance is None:
+            relevance = 0.0
+        metadata = getattr(doc, "metadata", {}) or {}
+        category = metadata.get("category")
+        confidence = metadata.get("confidence")
+        boost = 0.0
+        recency = _recency_boost(metadata)
+        if category == "self_correction":
+            boost += 0.1
+        if category == "user_fact":
+            try:
+                confidence_value = float(confidence) if confidence is not None else 0.85
+            except (TypeError, ValueError):
+                confidence_value = 0.85
+            boost += 0.08 * min(max(confidence_value, 0.0), 1.0)
+        combined = (0.6 * relevance) + (0.2 * overlap) + (0.2 * bm25) + boost + recency
+        scored.append((combined, doc))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [doc for _, doc in scored]
+
+
+def _extract_user_facts(message: str, language: str = "de") -> List[dict]:
+    text = (message or "").strip()
+    if not text:
+        return []
+
+    patterns = []
+    if language == "de":
+        patterns = [
+            (r"\bich hei[ßs]e\s+([^.,;!?]+)", "name"),
+            (r"\bmein name ist\s+([^.,;!?]+)", "name"),
+            (r"\bich wohne in\s+([^.,;!?]+)", "location"),
+            (r"\bich lebe in\s+([^.,;!?]+)", "location"),
+            (r"\bich arbeite (?:bei|in)\s+([^.,;!?]+)", "workplace"),
+            (r"\bmein geburtstag ist\s+([^.,;!?]+)", "birthday"),
+            (r"\bmeine lieblings([a-zäöüß]+)\s+ist\s+([^.,;!?]+)", "favorite"),
+        ]
+    else:
+        patterns = [
+            (r"\bmy name is\s+([^.,;!?]+)", "name"),
+            (r"\bi live in\s+([^.,;!?]+)", "location"),
+            (r"\bi work at\s+([^.,;!?]+)", "workplace"),
+            (r"\bmy birthday is\s+([^.,;!?]+)", "birthday"),
+            (r"\bmy favorite ([a-z]+)\s+is\s+([^.,;!?]+)", "favorite"),
+        ]
+
+    facts = []
+    lowered = text.lower()
+    for pattern, kind in patterns:
+        match = re.search(pattern, lowered)
+        if not match:
+            continue
+        if kind == "favorite":
+            category = match.group(1)
+            value = match.group(2)
+            facts.append({"kind": "favorite", "category": category.strip(), "value": value.strip()})
+        else:
+            value = match.group(1)
+            facts.append({"kind": kind, "value": value.strip()})
+
+    return facts
 
 
 async def retrieve_and_filter_memories(
@@ -50,17 +274,40 @@ async def retrieve_and_filter_memories(
         return relevant_docs
 
     try:
-        # Retrieve many memories (k=15) to ensure we have enough after filtering
+        # Retrieve many memories (k=20) to ensure we have enough after filtering
         all_docs = await asyncio.to_thread(
             vectorstore.query_memories,
             clean_message,
             user_id=user_id,
-            limit=15
+            limit=20
         )
+
+        # Stage 2: filter by similarity threshold, fallback to top-K if too strict
+        threshold = _get_memory_threshold()
+        low_confidence_fallback = False
+        if all_docs:
+            filtered_by_score = []
+            for doc in all_docs:
+                score = getattr(doc, "relevance", None)
+                if score is None:
+                    score = 0.0
+                if score >= threshold:
+                    filtered_by_score.append(doc)
+
+            if filtered_by_score:
+                all_docs = filtered_by_score
+            else:
+                fallback_count = min(5, len(all_docs))
+                logger.info(
+                    f"⚠️ No memories above threshold {threshold:.2f}; using top {fallback_count} low-confidence results."
+                )
+                all_docs = all_docs[:fallback_count]
+                low_confidence_fallback = True
 
         # Filter out circular/self-referential memories EARLY
         non_circular_docs = []
         circular_count = 0
+        expired_count = 0
 
         # Indicators that a memory contains facts (not just a question)
         fact_indicators = [
@@ -82,6 +329,21 @@ async def retrieve_and_filter_memories(
         ]
 
         for doc in all_docs:
+            metadata = getattr(doc, "metadata", {}) or {}
+            if metadata.get("superseded"):
+                continue
+            expires_at = metadata.get("expires_at")
+            if expires_at:
+                try:
+                    expires_dt = datetime.fromisoformat(expires_at)
+                    if expires_dt.tzinfo is None:
+                        expires_dt = expires_dt.replace(tzinfo=timezone.utc)
+                    if datetime.now(timezone.utc) > expires_dt:
+                        expired_count += 1
+                        continue
+                except Exception:
+                    pass
+
             content = getattr(doc, 'page_content', str(doc))
             content_lower = content.lower()
 
@@ -144,9 +406,15 @@ async def retrieve_and_filter_memories(
                 # Not a conversation format, keep it
                 non_circular_docs.append(doc)
 
+        if expired_count > 0:
+            logger.info(f"🕒 Filtered {expired_count} expired memories")
+
         if circular_count > 0:
             logger.info(f"⚡ Filtered {circular_count} circular memories, "
                        f"{len(non_circular_docs)} remain")
+
+        # Rerank before prioritization (semantic + lexical overlap)
+        non_circular_docs = _rerank_memories(clean_message, non_circular_docs)
 
         # Now prioritize from the non-circular memories
         correction_docs = []
@@ -158,8 +426,17 @@ async def retrieve_and_filter_memories(
             content_lower = content.lower()
 
             # Check category first
-            if doc.metadata.get("category") == "self_correction":
+            category = doc.metadata.get("category")
+            if category == "self_correction":
                 correction_docs.append(doc)
+            elif category == "user_fact":
+                confidence = doc.metadata.get("confidence", 0.0)
+                try:
+                    confidence_value = float(confidence)
+                except (TypeError, ValueError):
+                    confidence_value = 0.0
+                if confidence_value >= _get_fact_min_confidence():
+                    factual_docs.append(doc)
             # Then check if it's factual
             elif any(indicator.lower() in content_lower
                     for indicator in fact_indicators):
@@ -200,6 +477,12 @@ async def retrieve_and_filter_memories(
                             factual_docs[:3] +
                             other_docs[:2])
         relevant_docs = relevant_docs[:5]
+        if low_confidence_fallback and relevant_docs:
+            for doc in relevant_docs:
+                try:
+                    doc.metadata["low_confidence"] = True
+                except Exception:
+                    pass
 
         logger.info(f"📊 After prioritization: {len(relevant_docs)} docs in relevant_docs")
         if relevant_docs:
@@ -246,6 +529,11 @@ async def store_conversation_memory(
     from backend.memory.adapter import store_memory
     from backend.core.chat_processing_with_tools import classify_smart_home_storage_strategy
 
+    language = "de" if is_german else "en"
+    user_facts = _extract_user_facts(clean_message, language)
+    fact_confidence = _get_fact_confidence()
+    fact_ttl_days = _get_fact_ttl_days()
+
     # Save to langchain memory buffer
     memory.save_context({"input": clean_message}, {"output": response_content})
 
@@ -290,10 +578,11 @@ async def store_conversation_memory(
                 metadata = {
                     "interaction_type": "smart_home" if entity_id else "conversation",
                     "storage_reason": reason,
-                    "language": "de" if is_german else "en",
+                    "language": language,
                     "message_length": len(clean_message),
                     "response_length": len(response_content)
                 }
+                metadata["category"] = "conversation"
 
                 if entity_id:
                     metadata["entity_id"] = entity_id
@@ -307,6 +596,49 @@ async def store_conversation_memory(
                     metadata=metadata
                 )
                 logger.info(f"💾 Memory stored (reason: {reason}): {doc_id}")
+
+                if user_facts:
+                    for fact in user_facts[:5]:
+                        kind = fact.get("kind", "fact")
+                        value = fact.get("value", "")
+                        category = fact.get("category")
+                        if not value:
+                            continue
+                        if kind == "favorite" and category:
+                            fact_content = f"User fact: favorite_{category} = {value}"
+                        else:
+                            fact_content = f"User fact: {kind} = {value}"
+
+                        fact_metadata = {
+                            "category": "user_fact",
+                            "source": "user_fact",
+                            "language": language,
+                            "fact_kind": kind,
+                            "confidence": fact_confidence,
+                            "superseded": False,
+                            "fact_active": True,
+                        }
+                        if category:
+                            fact_metadata["fact_category"] = category
+                        if fact_ttl_days > 0:
+                            expires_at = datetime.now(timezone.utc) + timedelta(days=fact_ttl_days)
+                            fact_metadata["expires_at"] = expires_at.isoformat()
+
+                        fact_doc_id, _fact_ts = await asyncio.to_thread(
+                            store_memory,
+                            content=fact_content,
+                            user_id=user_id,
+                            tags=["user_fact", "profile", "fact"],
+                            metadata=fact_metadata
+                        )
+
+                        await _supersede_existing_facts(
+                            user_id=user_id,
+                            fact_kind=kind,
+                            fact_category=category,
+                            new_fact_id=fact_doc_id
+                        )
+
                 return doc_id, ts
             except Exception as e:
                 logger.error(f"Error storing memory: {e}")

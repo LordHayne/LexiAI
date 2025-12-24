@@ -13,6 +13,7 @@ Architecture:
 
 import logging
 import asyncio
+import os
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timezone, timedelta
@@ -22,7 +23,7 @@ from collections import defaultdict
 import numpy as np
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
-    PointStruct, Filter, FieldCondition, MatchValue,
+    PointStruct, Filter, FieldCondition, MatchValue, Range,
     VectorParams, Distance, OptimizersConfig,
     QuantizationConfig, BinaryQuantization, ScalarQuantization,
     HnswConfigDiff
@@ -279,10 +280,30 @@ class DeduplicationWorker(BaseWorker):
         memories = []
         offset = None
 
+        recent_days = self.config.get("recent_days")
+        if recent_days is None:
+            try:
+                recent_days = int(os.environ.get("LEXI_OPTIMIZER_DAYS", "90"))
+            except (TypeError, ValueError):
+                recent_days = 90
+        else:
+            try:
+                recent_days = int(recent_days)
+            except (TypeError, ValueError):
+                recent_days = 90
+        cutoff_ms = None
+        if recent_days and recent_days > 0:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=recent_days)
+            cutoff_ms = int(cutoff.timestamp() * 1000)
+
+        fallback_without_filter = False
+
         while True:
             scroll_result = safe_scroll(
                 collection_name=collection_name,
-                scroll_filter=None,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="timestamp_ms", range=Range(gte=cutoff_ms))]
+                ) if cutoff_ms else None,
                 with_payload=True,
                 with_vectors=True,
                 limit=batch_size,
@@ -296,6 +317,10 @@ class DeduplicationWorker(BaseWorker):
                 next_offset = getattr(scroll_result, "next_page_offset", None)
 
             if not points:
+                if cutoff_ms and not fallback_without_filter and offset is None:
+                    cutoff_ms = None
+                    fallback_without_filter = True
+                    continue
                 break
 
             for point in points:
@@ -637,10 +662,30 @@ class RelevanceRerankingWorker(BaseWorker):
         memories = []
         offset = None
 
+        recent_days = self.config.get("recent_days")
+        if recent_days is None:
+            try:
+                recent_days = int(os.environ.get("LEXI_OPTIMIZER_DAYS", "90"))
+            except (TypeError, ValueError):
+                recent_days = 90
+        else:
+            try:
+                recent_days = int(recent_days)
+            except (TypeError, ValueError):
+                recent_days = 90
+        cutoff_ms = None
+        if recent_days and recent_days > 0:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=recent_days)
+            cutoff_ms = int(cutoff.timestamp() * 1000)
+
+        fallback_without_filter = False
+
         while True:
             scroll_result = safe_scroll(
                 collection_name=collection_name,
-                scroll_filter=None,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="timestamp_ms", range=Range(gte=cutoff_ms))]
+                ) if cutoff_ms else None,
                 with_payload=True,
                 with_vectors=False,
                 limit=batch_size,
@@ -654,6 +699,10 @@ class RelevanceRerankingWorker(BaseWorker):
                 next_offset = getattr(scroll_result, "next_page_offset", None)
 
             if not points:
+                if cutoff_ms and not fallback_without_filter and offset is None:
+                    cutoff_ms = None
+                    fallback_without_filter = True
+                    continue
                 break
 
             for point in points:

@@ -243,7 +243,61 @@ Ist diese Antwort plausibel oder halluziniert?"""
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"Could not parse self-reflection response: {e}")
             logger.debug(f"Response was: {response_text[:500]}")
-            return True, None  # Default to valid if can't parse
+
+            # Retry once with stricter JSON-only instruction
+            try:
+                retry_messages = [
+                    {
+                        "role": "system",
+                        "content": "Return ONLY valid JSON matching the specified schema. No prose, no markdown."
+                    },
+                    {"role": "user", "content": user_prompt}
+                ]
+                retry_response = await chat_client.ainvoke(retry_messages)
+                retry_text = retry_response.content if hasattr(retry_response, "content") else str(retry_response)
+                cleaned_retry = retry_text.strip()
+
+                if cleaned_retry.startswith('```'):
+                    lines = cleaned_retry.split('\n')
+                    cleaned_retry = '\n'.join(lines[1:])
+                    if cleaned_retry.endswith('```'):
+                        cleaned_retry = cleaned_retry[:-3].strip()
+
+                start_idx = cleaned_retry.find('{')
+                if start_idx == -1:
+                    raise ValueError("No JSON object found in retry response")
+
+                brace_count = 0
+                end_idx = start_idx
+                for i in range(start_idx, len(cleaned_retry)):
+                    if cleaned_retry[i] == '{':
+                        brace_count += 1
+                    elif cleaned_retry[i] == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            end_idx = i + 1
+                            break
+
+                json_str = cleaned_retry[start_idx:end_idx]
+                verification = json.loads(json_str)
+
+                is_valid = verification.get('valid', True)
+                confidence = verification.get('confidence', 0.5)
+                issue = verification.get('issue', '')
+                suggestion = verification.get('suggestion', '')
+
+                if not is_valid and confidence >= 0.85:
+                    logger.warning(f"⚠️ Self-Reflection detected issue (conf={confidence:.2f}): {issue}")
+                    return False, f"{issue} | {suggestion}"
+                elif not is_valid and confidence >= 0.7:
+                    logger.info(f"ℹ️ Self-Reflection uncertain (conf={confidence:.2f}): {issue} - allowing anyway")
+                    return True, None
+                else:
+                    logger.info(f"✅ Self-Reflection: Answer valid (conf={confidence:.2f})")
+                    return True, None
+            except Exception as retry_error:
+                logger.warning(f"Self-reflection retry failed: {retry_error}")
+                return True, None  # Default to valid if can't parse
 
     except Exception as e:
         logger.error(f"Error in self-reflection: {e}")

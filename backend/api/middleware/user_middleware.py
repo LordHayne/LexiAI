@@ -8,12 +8,17 @@ Middleware that:
 4. Updates user's last_seen timestamp
 """
 
+import json
 import logging
+import os
+from datetime import datetime, timezone
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 from backend.services.user_store import get_user_store, generate_anonymous_user
+from backend.config.middleware_config import MiddlewareConfig
+from backend.models.user import User, UserTier
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +48,7 @@ class UserMiddleware(BaseHTTPMiddleware):
         """
         user_store = get_user_store()
         user_id = None
+        created_anonymous = False
 
         # Priority 1: X-User-ID header
         header_user_id = request.headers.get("X-User-ID")
@@ -57,12 +63,58 @@ class UserMiddleware(BaseHTTPMiddleware):
                 user_id = cookie_user_id
                 logger.debug(f"User ID from cookie: {user_id}")
 
+        # Priority 2.5: Home Assistant token mapping (stable user identity)
+        if not user_id:
+            ha_token = MiddlewareConfig.get_ha_token()
+            if ha_token:
+                header_token = request.headers.get("X-HA-Token")
+                if not header_token:
+                    auth_header = request.headers.get("Authorization", "")
+                    parts = auth_header.split()
+                    if len(parts) == 2 and parts[0].lower() == "bearer":
+                        header_token = parts[1]
+
+                if header_token and header_token == ha_token:
+                    user_id = os.environ.get("LEXI_HA_USER_ID", "home_assistant")
+                    existing_user = user_store.get_user(user_id)
+                    if not existing_user:
+                        now = datetime.now(timezone.utc).isoformat()
+                        ha_user = User(
+                            user_id=user_id,
+                            display_name="Home Assistant",
+                            created_at=now,
+                            last_seen=now,
+                            tier=UserTier.ANONYMOUS,
+                            preferences={},
+                            email=None
+                        )
+                        try:
+                            user_store.create_user(ha_user)
+                            logger.info(f"Created Home Assistant user: {user_id}")
+                        except Exception as e:
+                            logger.warning(f"Failed to create Home Assistant user: {e}")
+
+        # Priority 2.7: Request body user_id (JSON payloads)
+        if not user_id and request.method in ("POST", "PUT", "PATCH"):
+            content_type = request.headers.get("content-type", "").lower()
+            if "application/json" in content_type:
+                try:
+                    body = await request.body()
+                    if body:
+                        payload = json.loads(body)
+                        if isinstance(payload, dict) and payload.get("user_id"):
+                            user_id = payload["user_id"]
+                            logger.debug(f"User ID from request body: {user_id}")
+                except Exception as e:
+                    logger.debug(f"Unable to parse user_id from request body: {e}")
+
         # Priority 3: Create new anonymous user
         if not user_id:
             new_user = generate_anonymous_user()
             try:
                 user_store.create_user(new_user)
                 user_id = new_user.user_id
+                created_anonymous = True
                 logger.info(f"Created new anonymous user: {user_id}")
             except Exception as e:
                 logger.error(f"Failed to create anonymous user: {e}")
@@ -85,6 +137,16 @@ class UserMiddleware(BaseHTTPMiddleware):
 
         # Call next handler
         response: Response = await call_next(request)
+
+        if created_anonymous:
+            response.set_cookie(
+                key="lexi_user_id",
+                value=user_id,
+                httponly=False,
+                samesite="lax",
+                max_age=365 * 24 * 60 * 60,
+                path="/"
+            )
 
         return response
 

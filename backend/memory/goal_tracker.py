@@ -254,6 +254,7 @@ class GoalTracker:
         """Stellt sicher dass Goals Collection existiert"""
         try:
             from backend.qdrant.client_wrapper import QdrantClient
+            from backend.qdrant.client_wrapper import safe_upsert
             client = self.vectorstore.client
 
             # Prüfe ob Collection existiert
@@ -283,7 +284,7 @@ class GoalTracker:
                 payload=goal.to_dict()
             )
 
-            client.upsert(
+            safe_upsert(
                 collection_name=self.goals_collection,
                 points=[point]
             )

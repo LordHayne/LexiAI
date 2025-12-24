@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
@@ -59,6 +60,7 @@ class QdrantMemoryInterface:
                     "content": content,
                     "user_id": entry.user_id,  # USER ISOLATION: Store user_id in payload
                     "timestamp": entry.timestamp.isoformat(),
+                    "timestamp_ms": int(entry.timestamp.timestamp() * 1000) if entry.timestamp else None,
                     "category": entry.category,
                     "tags": entry.tags,
                     "source": entry.source,
@@ -351,6 +353,36 @@ class QdrantMemoryInterface:
                     embedding=None
                 ))
 
+            # Fallback: if threshold was extremely strict, retry with a softer cutoff
+            if not entries and score_threshold is not None and score_threshold >= 0.9:
+                fallback_threshold = float(os.environ.get("LEXI_MEMORY_FALLBACK_THRESHOLD", "0.8"))
+                if fallback_threshold < score_threshold:
+                    logger.info(
+                        f"No memories found at score_threshold={score_threshold}. Retrying with {fallback_threshold}."
+                    )
+                    fallback_result = safe_search(
+                        collection_name=self.collection,
+                        query_vector=vector,
+                        query_filter=Filter(must=[FieldCondition(
+                            key="user_id", match=MatchValue(value=user_id)
+                        )]) if user_id else None,
+                        limit=top_k or limit,
+                        score_threshold=fallback_threshold,
+                        with_payload=True
+                    )
+                    for point in fallback_result:
+                        payload = point.payload or {}
+                        entries.append(MemoryEntry(
+                            id=point.id,
+                            content=payload.get("content", ""),
+                            timestamp=datetime.fromisoformat(payload.get("timestamp", datetime.now().isoformat())),
+                            category=payload.get("category"),
+                            tags=payload.get("tags", []),
+                            source=payload.get("source"),
+                            relevance=point.score or 1.0,
+                            embedding=None
+                        ))
+
             total_time = (time.time() - start) * 1000
 
             # 🔍 DEBUG MODE: Detailed memory retrieval logging
@@ -489,6 +521,7 @@ class QdrantMemoryInterface:
             payload = {
                 "content": content,
                 "timestamp": timestamp,
+                "timestamp_ms": int(datetime.now(timezone.utc).timestamp() * 1000),
                 "user_id": user_id,
                 "tags": tags or [],
                 "relevance": 1.0,

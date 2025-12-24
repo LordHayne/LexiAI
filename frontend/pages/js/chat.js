@@ -73,7 +73,8 @@ function sendMessage() {
 
     showTypingIndicator();
 
-    const isStreaming = document.querySelector('input[value="streaming"]').checked;
+    const streamingToggle = document.querySelector('input[value="streaming"]');
+    const isStreaming = streamingToggle ? streamingToggle.checked : true;
 
     fetch('/ui/chat', {
         method: 'POST',

@@ -55,6 +55,7 @@ class ConfigPersistence:
             "qdrant_host": str,
             "qdrant_port": int,
             "api_key": str,
+            "api_key_enabled": bool,
             "tavily_api_key": str,
             "memory_threshold": (int, float),
             "features": dict,
@@ -326,7 +327,16 @@ class ConfigPersistence:
             "embedding_url": "LEXI_EMBEDDING_URL",
             "qdrant_host": "LEXI_QDRANT_HOST",
             "qdrant_port": "LEXI_QDRANT_PORT",
+            "chat_history_days": "LEXI_CHAT_HISTORY_DAYS",
+            "stats_days": "LEXI_STATS_DAYS",
+            "memory_synthesis_days": "LEXI_MEMORY_SYNTHESIS_DAYS",
+            "optimizer_days": "LEXI_OPTIMIZER_DAYS",
+            "fact_confidence": "LEXI_FACT_CONFIDENCE",
+            "fact_min_confidence": "LEXI_FACT_MIN_CONFIDENCE",
+            "fact_ttl_days": "LEXI_FACT_TTL_DAYS",
+            "memory_fallback_threshold": "LEXI_MEMORY_FALLBACK_THRESHOLD",
             "api_key": "LEXI_API_KEY",
+            "api_key_enabled": "LEXI_API_KEY_ENABLED",
             "memory_threshold": "LEXI_MEMORY_THRESHOLD",
             "tavily_api_key": "TAVILY_API_KEY",
             "ha_url": "LEXI_HA_URL",
@@ -362,7 +372,16 @@ class ConfigPersistence:
 
                 logger.info(f"Applied config setting: {key}={log_value}")
                 applied_count += 1
-        
+
+        if "api_key_enabled" in config and config["api_key_enabled"] is not None:
+            from backend.config.security_config import SecurityConfig
+            enabled_value = config["api_key_enabled"]
+            if isinstance(enabled_value, str):
+                enabled = enabled_value.lower() == "true"
+            else:
+                enabled = bool(enabled_value)
+            SecurityConfig.API_KEY_ENABLED = enabled
+
         # Handle special case: embedding URL fallback
         if "ollama_url" in config:
             if ("embedding_url" not in config or 

@@ -374,6 +374,7 @@ class KnowledgeGapTracker:
         """Stellt sicher dass Knowledge Gaps Collection existiert"""
         try:
             from backend.qdrant.client_wrapper import QdrantClient
+            from backend.qdrant.client_wrapper import safe_upsert
             client = self.vectorstore.client
 
             collections = client.get_collections().collections
@@ -401,7 +402,7 @@ class KnowledgeGapTracker:
                 payload=gap.to_dict()
             )
 
-            client.upsert(
+            safe_upsert(
                 collection_name=self.gaps_collection,
                 points=[point]
             )

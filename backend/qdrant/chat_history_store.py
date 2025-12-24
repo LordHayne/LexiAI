@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
@@ -6,7 +7,7 @@ from uuid import uuid4
 
 from qdrant_client import models
 from qdrant_client.http.exceptions import UnexpectedResponse
-from qdrant_client.models import Filter, FieldCondition, MatchValue, PointStruct
+from qdrant_client.models import Filter, FieldCondition, MatchValue, PointStruct, Range
 
 from backend.config.middleware_config import MiddlewareConfig
 from backend.qdrant.client_wrapper import get_qdrant_client, safe_scroll, safe_upsert
@@ -18,6 +19,23 @@ CHAT_HISTORY_VECTOR = [1.0]
 
 _collection_ready = False
 _collection_lock = threading.Lock()
+
+
+def _get_recent_history_days() -> Optional[int]:
+    value = os.environ.get("LEXI_CHAT_HISTORY_DAYS", "30")
+    try:
+        days = int(value)
+    except (TypeError, ValueError):
+        days = 30
+    return days if days > 0 else None
+
+
+def _get_recent_ts_cutoff_ms() -> Optional[int]:
+    days = _get_recent_history_days()
+    if not days:
+        return None
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    return int(cutoff.timestamp() * 1000)
 
 
 def _get_collection_name() -> str:
@@ -182,9 +200,12 @@ def list_sessions(user_id: str, limit: int = 50) -> List[Dict[str, Optional[str]
     if not user_id:
         return []
 
-    points = _scroll_points(
-        Filter(must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))])
-    )
+    must_filters = [FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+    cutoff_ms = _get_recent_ts_cutoff_ms()
+    if cutoff_ms is not None:
+        must_filters.append(FieldCondition(key="ts", range=Range(gte=cutoff_ms)))
+
+    points = _scroll_points(Filter(must=must_filters))
 
     sessions: Dict[str, Dict[str, Optional[str]]] = {}
     for point in points:
@@ -222,14 +243,15 @@ def fetch_session_messages(
     if not user_id or not session_id:
         return []
 
-    points = _scroll_points(
-        Filter(
-            must=[
-                FieldCondition(key="user_id", match=MatchValue(value=user_id)),
-                FieldCondition(key="session_id", match=MatchValue(value=session_id)),
-            ]
-        )
-    )
+    must_filters = [
+        FieldCondition(key="user_id", match=MatchValue(value=user_id)),
+        FieldCondition(key="session_id", match=MatchValue(value=session_id)),
+    ]
+    cutoff_ms = _get_recent_ts_cutoff_ms()
+    if cutoff_ms is not None:
+        must_filters.append(FieldCondition(key="ts", range=Range(gte=cutoff_ms)))
+
+    points = _scroll_points(Filter(must=must_filters))
 
     messages = []
     for point in points:
