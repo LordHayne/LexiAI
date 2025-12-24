@@ -11,6 +11,7 @@ import asyncio
 import aiohttp
 import re
 from difflib import get_close_matches
+from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ class HomeAssistantService:
         self._entity_registry_cache: Optional[List[Dict[str, Any]]] = None
         self._area_name_map: Dict[str, str] = {}  # area name -> area_id
         self._device_name_map: Dict[str, str] = {}  # device name -> device_id
+        self._ws_msg_id = 0
 
         # Allowed service domains for automation/script creation
         self._allowed_service_domains = {
@@ -665,6 +667,37 @@ class HomeAssistantService:
         except aiohttp.ClientError as e:
             return {"success": False, "error": f"Network error: {str(e)}"}
 
+    async def _ws_request(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Send a single websocket request to Home Assistant."""
+        ws_url = self.url.replace("http", "ws", 1) + "/api/websocket"
+        self._ws_msg_id += 1
+        message["id"] = self._ws_msg_id
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.ws_connect(ws_url) as ws:
+                    greeting = await ws.receive_json()
+                    if greeting.get("type") != "auth_required":
+                        return {"success": False, "error": "WebSocket auth_required missing"}
+
+                    await ws.send_json({"type": "auth", "access_token": self.token})
+                    auth_resp = await ws.receive_json()
+                    if auth_resp.get("type") != "auth_ok":
+                        return {"success": False, "error": "WebSocket auth failed"}
+
+                    await ws.send_json(message)
+                    response = await ws.receive_json()
+                    if response.get("type") == "result" and response.get("success"):
+                        return {"success": True, "result": response.get("result")}
+                    return {
+                        "success": False,
+                        "error": response.get("error", {}).get("message", "WebSocket request failed")
+                    }
+        except asyncio.TimeoutError:
+            return {"success": False, "error": "WebSocket timeout"}
+        except aiohttp.ClientError as e:
+            return {"success": False, "error": f"WebSocket network error: {str(e)}"}
+
     async def _fetch_registry(self, path: str) -> Optional[List[Dict[str, Any]]]:
         """
         Fetch registry data (areas/devices/entities) from Home Assistant.
@@ -774,6 +807,33 @@ class HomeAssistantService:
         url = f"{self.url}/api/config/automation/config"
 
         async with session.post(url, json=normalized, headers=headers) as resp:
+            if resp.status == 401 or resp.status == 403:
+                return {
+                    "success": False,
+                    "error": "Token hat keine Berechtigung fuer Automationen (Admin-Rechte erforderlich)."
+                }
+            if resp.status == 404:
+                logger.warning("REST Config API 404 - trying WebSocket fallback for automation")
+                ws_result = await self._ws_request({
+                    "type": "config/automation/create",
+                    "automation": normalized
+                })
+                if ws_result.get("success"):
+                    created = ws_result.get("result", {})
+                    reload_result = await self._ws_request({"type": "config/automation/reload"})
+                    if not reload_result.get("success"):
+                        return {
+                            "success": False,
+                            "error": "Automation gespeichert, aber Reload fehlgeschlagen (WebSocket)."
+                        }
+                    return {"success": True, "preview": False, "automation": created}
+                return {
+                    "success": False,
+                    "error": (
+                        "Home Assistant REST Config API fuer Automationen ist nicht verfuegbar (404) "
+                        "und WebSocket-Fallback ist fehlgeschlagen."
+                    )
+                }
             if resp.status not in [200, 201]:
                 error_text = await resp.text()
                 return {"success": False, "error": f"HTTP {resp.status}: {error_text[:200]}"}
@@ -830,6 +890,33 @@ class HomeAssistantService:
         url = f"{self.url}/api/config/script/config"
 
         async with session.post(url, json=normalized, headers=headers) as resp:
+            if resp.status == 401 or resp.status == 403:
+                return {
+                    "success": False,
+                    "error": "Token hat keine Berechtigung fuer Scripts (Admin-Rechte erforderlich)."
+                }
+            if resp.status == 404:
+                logger.warning("REST Config API 404 - trying WebSocket fallback for script")
+                ws_result = await self._ws_request({
+                    "type": "config/script/create",
+                    "script": normalized
+                })
+                if ws_result.get("success"):
+                    created = ws_result.get("result", {})
+                    reload_result = await self._ws_request({"type": "config/script/reload"})
+                    if not reload_result.get("success"):
+                        return {
+                            "success": False,
+                            "error": "Script gespeichert, aber Reload fehlgeschlagen (WebSocket)."
+                        }
+                    return {"success": True, "preview": False, "script": created}
+                return {
+                    "success": False,
+                    "error": (
+                        "Home Assistant REST Config API fuer Scripts ist nicht verfuegbar (404) "
+                        "und WebSocket-Fallback ist fehlgeschlagen."
+                    )
+                }
             if resp.status not in [200, 201]:
                 error_text = await resp.text()
                 return {"success": False, "error": f"HTTP {resp.status}: {error_text[:200]}"}
@@ -1071,6 +1158,8 @@ class HomeAssistantService:
         normalized["trigger"] = trigger_list
         normalized["condition"] = condition_list
         normalized["action"] = action_list
+        if "id" not in normalized:
+            normalized["id"] = str(uuid4())
 
         return normalized, errors
 
@@ -1091,6 +1180,8 @@ class HomeAssistantService:
             sequence_list = sequence if isinstance(sequence, list) else [sequence]
 
         normalized["sequence"] = sequence_list
+        if "id" not in normalized:
+            normalized["id"] = str(uuid4())
 
         return normalized, errors
 
