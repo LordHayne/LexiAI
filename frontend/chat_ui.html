@@ -1519,9 +1519,293 @@
             statusIndicator: null
         };
 
+        const REALTIME_VOICE_ENABLED = true;
+        const VOICE_WS_URL = API_BASE_URL.replace(/^http/, 'ws') + '/api/audio/ws';
+
+        const voiceStream = {
+            ws: null,
+            connected: false,
+            connecting: false,
+            recording: false,
+            audioContext: null,
+            processor: null,
+            source: null,
+            stream: null,
+            silenceGain: null,
+            currentUserMsg: null,
+            currentAssistantMsg: null,
+            assistantText: '',
+            sampleRate: 16000
+        };
+        let activeVoiceMode = 'legacy';
+
         // DOM Elements
         const voiceBtn = document.getElementById('voiceBtn');
         const voiceResponse = document.getElementById('voiceResponse');
+
+        function stopAllAudioPlayback() {
+            document.querySelectorAll('audio').forEach((audio) => {
+                try {
+                    audio.pause();
+                    audio.currentTime = 0;
+                } catch (e) {
+                    console.warn('Failed to stop audio:', e);
+                }
+            });
+        }
+
+        function ensureVoiceUserMessage(text) {
+            if (!voiceStream.currentUserMsg) {
+                voiceStream.currentUserMsg = addMessage('user', text);
+                messageCount++;
+                updateStats();
+            } else {
+                voiceStream.currentUserMsg.contentDiv.textContent = text;
+            }
+        }
+
+        function ensureVoiceAssistantMessage() {
+            if (!voiceStream.currentAssistantMsg) {
+                voiceStream.currentAssistantMsg = addMessage('assistant', '');
+                voiceStream.assistantText = '';
+                messageCount++;
+                updateStats();
+            }
+            return voiceStream.currentAssistantMsg;
+        }
+
+        function appendAudioPlayer(messageDiv, audioBlob, format, autoPlay = true) {
+            const audioPlayer = document.createElement('audio');
+            audioPlayer.className = 'voice-response-player';
+            audioPlayer.controls = true;
+            audioPlayer.src = URL.createObjectURL(audioBlob);
+            messageDiv.appendChild(audioPlayer);
+
+            if (autoPlay) {
+                audioPlayer.play().catch(err => {
+                    console.log('Auto-play blocked:', err);
+                });
+            }
+        }
+
+        function resetVoiceStreamMessages() {
+            voiceStream.currentUserMsg = null;
+            voiceStream.currentAssistantMsg = null;
+            voiceStream.assistantText = '';
+        }
+
+        function downsampleBuffer(buffer, inputRate, targetRate) {
+            if (targetRate === inputRate) {
+                return buffer;
+            }
+            const ratio = inputRate / targetRate;
+            const newLength = Math.round(buffer.length / ratio);
+            const result = new Float32Array(newLength);
+            let offsetResult = 0;
+            let offsetBuffer = 0;
+            while (offsetResult < result.length) {
+                const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+                let accum = 0;
+                let count = 0;
+                for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+                    accum += buffer[i];
+                    count++;
+                }
+                result[offsetResult] = accum / count;
+                offsetResult++;
+                offsetBuffer = nextOffsetBuffer;
+            }
+            return result;
+        }
+
+        function floatTo16BitPCM(floatBuffer) {
+            const output = new Int16Array(floatBuffer.length);
+            for (let i = 0; i < floatBuffer.length; i++) {
+                let s = Math.max(-1, Math.min(1, floatBuffer[i]));
+                output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            return output;
+        }
+
+        function int16ToBase64(int16Array) {
+            const bytes = new Uint8Array(int16Array.buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        function connectVoiceWs() {
+            if (!REALTIME_VOICE_ENABLED) return Promise.resolve(false);
+            if (voiceStream.connected || voiceStream.connecting) {
+                return Promise.resolve(voiceStream.connected);
+            }
+
+            voiceStream.connecting = true;
+            return new Promise((resolve) => {
+                try {
+                    voiceStream.ws = new WebSocket(VOICE_WS_URL);
+
+                    voiceStream.ws.onopen = () => {
+                        voiceStream.connected = true;
+                        voiceStream.connecting = false;
+                        resolve(true);
+                    };
+
+                    voiceStream.ws.onclose = () => {
+                        voiceStream.connected = false;
+                        voiceStream.connecting = false;
+                    };
+
+                    voiceStream.ws.onerror = () => {
+                        voiceStream.connected = false;
+                        voiceStream.connecting = false;
+                        resolve(false);
+                    };
+
+                    voiceStream.ws.onmessage = (event) => {
+                        let data;
+                        try {
+                            data = JSON.parse(event.data);
+                        } catch (e) {
+                            return;
+                        }
+
+                        if (data.type === 'status') {
+                            showVoiceStatus(data.message, 'processing');
+                        } else if (data.type === 'transcription') {
+                            ensureVoiceUserMessage(data.text || '');
+                        } else if (data.type === 'assistant_chunk') {
+                            const msg = ensureVoiceAssistantMessage();
+                            voiceStream.assistantText += data.text || '';
+                            msg.contentDiv.textContent = voiceStream.assistantText;
+                        } else if (data.type === 'assistant_final') {
+                            if (data.text && voiceStream.currentAssistantMsg) {
+                                voiceStream.currentAssistantMsg.contentDiv.textContent = data.text;
+                            }
+                            if (data.turn_id && voiceStream.currentAssistantMsg) {
+                                addFeedbackButtons(voiceStream.currentAssistantMsg.messageDiv, data.turn_id);
+                            }
+                            showVoiceStatus('Antwort bereit.', 'success');
+                        } else if (data.type === 'audio') {
+                            if (data.data) {
+                                const binary = atob(data.data);
+                                const bytes = new Uint8Array(binary.length);
+                                for (let i = 0; i < binary.length; i++) {
+                                    bytes[i] = binary.charCodeAt(i);
+                                }
+                                const mime = data.format === 'wav' ? 'audio/wav' : 'audio/mpeg';
+                                const blob = new Blob([bytes], { type: mime });
+                                const msg = ensureVoiceAssistantMessage();
+                                appendAudioPlayer(msg.messageDiv, blob, data.format);
+                                resetVoiceStreamMessages();
+                                hideVoiceStatus();
+                                resetVoiceUI();
+                            }
+                        } else if (data.type === 'error') {
+                            showVoiceStatus(data.message || 'Voice Fehler', 'error');
+                            resetVoiceUI();
+                        }
+                    };
+                } catch (e) {
+                    voiceStream.connected = false;
+                    voiceStream.connecting = false;
+                    resolve(false);
+                }
+            });
+        }
+
+        async function startRealtimeVoice() {
+            const wsReady = await connectVoiceWs();
+            if (!wsReady) {
+                return false;
+            }
+
+            stopAllAudioPlayback();
+            resetVoiceStreamMessages();
+
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    channelCount: 1,
+                    echoCancellation: true,
+                    noiseSuppression: true
+                }
+            });
+
+            voiceStream.stream = stream;
+            try {
+                voiceStream.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: voiceStream.sampleRate
+                });
+            } catch (e) {
+                voiceStream.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            voiceStream.source = voiceStream.audioContext.createMediaStreamSource(stream);
+            voiceStream.processor = voiceStream.audioContext.createScriptProcessor(4096, 1, 1);
+            voiceStream.silenceGain = voiceStream.audioContext.createGain();
+            voiceStream.silenceGain.gain.value = 0;
+
+            voiceStream.processor.onaudioprocess = (event) => {
+                if (!voiceStream.recording || !voiceStream.connected) return;
+
+                const inputData = event.inputBuffer.getChannelData(0);
+                const downsampled = downsampleBuffer(inputData, voiceStream.audioContext.sampleRate, voiceStream.sampleRate);
+                const pcm16 = floatTo16BitPCM(downsampled);
+                const payload = {
+                    type: 'audio',
+                    data: int16ToBase64(pcm16)
+                };
+                voiceStream.ws.send(JSON.stringify(payload));
+            };
+
+            voiceStream.source.connect(voiceStream.processor);
+            voiceStream.processor.connect(voiceStream.silenceGain);
+            voiceStream.silenceGain.connect(voiceStream.audioContext.destination);
+
+            const userId = window.userManager ? userManager.getUserId() : null;
+            voiceStream.ws.send(JSON.stringify({
+                type: 'start',
+                sample_rate: voiceStream.sampleRate,
+                user_id: userId,
+                vad_enabled: true
+            }));
+
+            voiceStream.recording = true;
+            return true;
+        }
+
+        async function stopRealtimeVoice() {
+            if (!voiceStream.recording) return;
+            voiceStream.recording = false;
+
+            if (voiceStream.ws && voiceStream.connected) {
+                voiceStream.ws.send(JSON.stringify({ type: 'stop' }));
+            }
+
+            if (voiceStream.processor) {
+                voiceStream.processor.disconnect();
+                voiceStream.processor.onaudioprocess = null;
+            }
+            if (voiceStream.silenceGain) {
+                voiceStream.silenceGain.disconnect();
+            }
+            if (voiceStream.source) {
+                voiceStream.source.disconnect();
+            }
+            if (voiceStream.audioContext) {
+                voiceStream.audioContext.close();
+            }
+            if (voiceStream.stream) {
+                voiceStream.stream.getTracks().forEach(track => track.stop());
+            }
+
+            voiceStream.processor = null;
+            voiceStream.silenceGain = null;
+            voiceStream.source = null;
+            voiceStream.audioContext = null;
+            voiceStream.stream = null;
+        }
 
         // Initialize Voice Functionality
         async function initVoiceRecording() {
@@ -1569,7 +1853,34 @@
 
         // Start Voice Recording
         async function startVoiceRecording() {
+            if (REALTIME_VOICE_ENABLED) {
+                try {
+                    const started = await startRealtimeVoice();
+                    if (started) {
+                        activeVoiceMode = 'realtime';
+                        voiceRecording.isRecording = true;
+
+                        voiceBtn.classList.add('recording');
+                        voiceBtn.textContent = '⏹️';
+                        voiceBtn.setAttribute('aria-pressed', 'true');
+                        sendBtn.disabled = true;
+                        messageInput.disabled = true;
+                        showVoiceStatus('Aufnahme läuft...', 'recording');
+                        return;
+                    }
+                } catch (error) {
+                    console.warn('Realtime voice failed, fallback to legacy:', error);
+                }
+            }
+
+            activeVoiceMode = 'legacy';
+            await startLegacyVoiceRecording();
+        }
+
+        // Start Legacy Voice Recording
+        async function startLegacyVoiceRecording() {
             try {
+                stopAllAudioPlayback();
                 const stream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         channelCount: 1,
@@ -1620,6 +1931,25 @@
 
         // Stop Voice Recording
         function stopVoiceRecording() {
+            if (activeVoiceMode === 'realtime') {
+                stopRealtimeVoice().catch(error => {
+                    console.error('Realtime stop failed:', error);
+                });
+
+                voiceRecording.isRecording = false;
+                voiceBtn.classList.remove('recording');
+                voiceBtn.classList.add('processing');
+                voiceBtn.textContent = '🎤';
+                voiceBtn.setAttribute('aria-pressed', 'false');
+                showVoiceStatus('Verarbeite Aufnahme...', 'processing');
+                return;
+            }
+
+            stopLegacyVoiceRecording();
+        }
+
+        // Stop Legacy Voice Recording
+        function stopLegacyVoiceRecording() {
             if (voiceRecording.mediaRecorder && voiceRecording.mediaRecorder.state !== 'inactive') {
                 voiceRecording.mediaRecorder.stop();
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Response, HTTPException
+from fastapi import APIRouter, UploadFile, File, Response, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 import logging
 import json
@@ -12,6 +12,10 @@ import tempfile
 import os
 import time
 from datetime import datetime
+import base64
+import math
+import struct
+import wave
 from backend.services.tts_simple import synthesize_speech_simple
 
 logger = logging.getLogger("lexi_audio_api")
@@ -546,3 +550,190 @@ async def get_audio_stats():
             "performance_rating": "fast" if audio_stats.last_processing_time < 5 else "slow" if audio_stats.last_processing_time > 15 else "normal"
         }
     }
+
+
+def _pcm16_to_wav_bytes(pcm_bytes: bytes, sample_rate: int) -> bytes:
+    """Wrap raw PCM16 mono audio into a WAV container."""
+    with io.BytesIO() as wav_io:
+        with wave.open(wav_io, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            wf.writeframes(pcm_bytes)
+        return wav_io.getvalue()
+
+
+def _pcm16_rms(pcm_bytes: bytes) -> int:
+    """Compute RMS for a PCM16 mono chunk."""
+    count = len(pcm_bytes) // 2
+    if count == 0:
+        return 0
+    shorts = struct.unpack(f"<{count}h", pcm_bytes)
+    sum_squares = sum(sample * sample for sample in shorts)
+    return int(math.sqrt(sum_squares / count))
+
+
+async def _synthesize_voice_audio(text: str) -> Dict[str, Any]:
+    """Generate TTS audio with XTTS if configured, otherwise gTTS."""
+    language = get_persistent_config_value("tts_language", "de")
+    provider = str(get_persistent_config_value("tts_provider", "")).lower()
+    xtts_url = get_persistent_config_value("xtts_url")
+    xtts_speaker_wav = get_persistent_config_value("xtts_speaker_wav", "/app/voices/lexi.wav")
+    xtts_speed = get_persistent_config_value("xtts_speed", 1.0)
+    xtts_temperature = get_persistent_config_value("xtts_temperature", 0.75)
+
+    if provider == "xtts" or xtts_url:
+        try:
+            from backend.services.tts_xtts import get_xtts_service
+
+            service = get_xtts_service(
+                server_url=xtts_url or "http://localhost:8020",
+                speaker_wav_path=xtts_speaker_wav,
+                default_language=language
+            )
+            audio_data = await service.synthesize_speech(
+                text=text,
+                language=language,
+                speed=xtts_speed,
+                temperature=xtts_temperature
+            )
+            return {"format": "wav", "data": audio_data, "provider": "xtts"}
+        except Exception as e:
+            logger.warning(f"XTTS failed, falling back to gTTS: {e}")
+
+    audio_data = await synthesize_speech_simple(text, language=language)
+    return {"format": "mp3", "data": audio_data, "provider": "gtts"}
+
+
+@router.websocket("/api/audio/ws")
+async def voice_ws(websocket: WebSocket):
+    """
+    Realtime voice pipeline:
+    - Receive PCM16 chunks over WS
+    - VAD to auto-stop
+    - Whisper STT
+    - Streaming LLM response
+    - TTS audio back to client
+    """
+    await websocket.accept()
+
+    buffer = bytearray()
+    sample_rate = 16000
+    is_recording = False
+    vad_enabled = True
+    vad_threshold = 600
+    vad_silence_ms = 700
+    last_voice_ms: Optional[float] = None
+    user_id: Optional[str] = None
+    processing = False
+
+    async def finalize_utterance():
+        nonlocal buffer, is_recording, processing
+        if processing:
+            return
+        processing = True
+        is_recording = False
+
+        if not buffer:
+            await websocket.send_json({"type": "status", "message": "Kein Audio empfangen."})
+            processing = False
+            return
+
+        wav_bytes = _pcm16_to_wav_bytes(bytes(buffer), sample_rate)
+        buffer = bytearray()
+
+        try:
+            transcription = await transcribe_audio(wav_bytes, filename="audio.wav")
+            await websocket.send_json({"type": "transcription", "text": transcription})
+
+            from backend.core.chat_logic import process_chat_message_streaming
+
+            assistant_chunks = []
+            turn_id = None
+            async for result in process_chat_message_streaming(
+                transcription,
+                user_id=user_id or "default"
+            ):
+                if "chunk" in result and result["chunk"] is not None:
+                    assistant_chunks.append(result["chunk"])
+                    await websocket.send_json({"type": "assistant_chunk", "text": result["chunk"]})
+                if result.get("final_chunk"):
+                    turn_id = result.get("turn_id")
+                    break
+
+            assistant_text = " ".join(part.strip() for part in assistant_chunks).strip()
+            if not assistant_text:
+                assistant_text = "Entschuldigung, ich habe gerade keine passende Antwort."
+
+            await websocket.send_json({
+                "type": "assistant_final",
+                "text": assistant_text,
+                "turn_id": turn_id
+            })
+
+            tts_result = await _synthesize_voice_audio(assistant_text)
+            audio_b64 = base64.b64encode(tts_result["data"]).decode("ascii")
+            await websocket.send_json({
+                "type": "audio",
+                "format": tts_result["format"],
+                "provider": tts_result["provider"],
+                "data": audio_b64
+            })
+        except Exception as e:
+            logger.error(f"Voice WS processing failed: {e}", exc_info=True)
+            await websocket.send_json({"type": "error", "message": "Voice Verarbeitung fehlgeschlagen."})
+        finally:
+            processing = False
+
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                await websocket.send_json({"type": "error", "message": "Ungültiges JSON."})
+                continue
+
+            msg_type = payload.get("type")
+
+            if msg_type == "start":
+                buffer = bytearray()
+                is_recording = True
+                sample_rate = int(payload.get("sample_rate", 16000))
+                user_id = payload.get("user_id")
+                vad_enabled = payload.get("vad_enabled", True)
+                vad_threshold = int(payload.get("vad_threshold", 600))
+                vad_silence_ms = int(payload.get("vad_silence_ms", 700))
+                last_voice_ms = None
+                await websocket.send_json({"type": "status", "message": "Aufnahme gestartet."})
+
+            elif msg_type == "audio":
+                if not is_recording:
+                    continue
+                data_b64 = payload.get("data")
+                if not data_b64:
+                    continue
+                try:
+                    chunk = base64.b64decode(data_b64)
+                except Exception:
+                    continue
+                buffer.extend(chunk)
+
+                if vad_enabled:
+                    rms = _pcm16_rms(chunk)
+                    now_ms = time.time() * 1000
+                    if rms >= vad_threshold:
+                        last_voice_ms = now_ms
+                    elif last_voice_ms is not None and (now_ms - last_voice_ms) >= vad_silence_ms:
+                        await websocket.send_json({"type": "status", "message": "Stille erkannt, verarbeite..."})
+                        await finalize_utterance()
+
+            elif msg_type == "stop":
+                await websocket.send_json({"type": "status", "message": "Verarbeite Aufnahme..."})
+                await finalize_utterance()
+
+            elif msg_type == "ping":
+                await websocket.send_json({"type": "pong"})
+
+    except WebSocketDisconnect:
+        logger.info("Voice WS disconnected")
