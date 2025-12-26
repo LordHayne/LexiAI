@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import json
 import logging
 import time
 from contextlib import contextmanager
@@ -14,6 +16,9 @@ from .message_builder import build_messages
 # Profile Learning Integration
 from backend.services.profile_builder import ProfileBuilder
 from backend.services.profile_context import ProfileContextBuilder
+from backend.services.user_store import build_user_profile_context
+from backend.services.session_manager import get_session_manager
+from backend.config.persistence import ConfigPersistence
 
 logger = logging.getLogger("memory_decisions")
 
@@ -58,6 +63,17 @@ class PerformanceTracker:
 
         return f"Performance Summary ({total:.0f}ms total, {accounted_time:.0f}ms accounted):\n{breakdown}"
 
+def _build_cache_fingerprint(system_prompt: str, conversation_history: Optional[list]) -> str:
+    payload = json.dumps(
+        {
+            "system_prompt": system_prompt or "",
+            "history": conversation_history or []
+        },
+        ensure_ascii=True,
+        sort_keys=True
+    )
+    return hashlib.md5(payload.encode("utf-8")).hexdigest()
+
 async def _run_chat_logic(
     message,
     chat_client,
@@ -66,7 +82,8 @@ async def _run_chat_logic(
     embeddings,
     streaming=False,
     user_id="default",
-    user_profile: Optional[Dict[str, Any]] = None
+    user_profile: Optional[Dict[str, Any]] = None,
+    conversation_history: Optional[list] = None
 ):
     """
     Chat Logic mit Profile Learning Integration
@@ -141,6 +158,13 @@ async def _run_chat_logic(
                     else:
                         response_content = f"I found no memories about '{forget_topic}'."
 
+                session_manager = get_session_manager()
+                try:
+                    session_manager.add_message(user_id, "user", clean_message)
+                    session_manager.add_message(user_id, "assistant", response_content)
+                except Exception as e:
+                    logger.warning(f"Failed to add forget response to session history: {e}")
+
                 # Return immediately without further processing
                 if streaming:
                     async for chunk in _stream_response(response_content):
@@ -170,6 +194,13 @@ async def _run_chat_logic(
             except Exception as e:
                 logger.error(f"Error processing forget command: {str(e)}", exc_info=True)
                 error_msg = f"Fehler beim Löschen: {str(e)}" if is_german else f"Error deleting memories: {str(e)}"
+
+                session_manager = get_session_manager()
+                try:
+                    session_manager.add_message(user_id, "user", clean_message)
+                    session_manager.add_message(user_id, "assistant", error_msg)
+                except Exception as session_error:
+                    logger.warning(f"Failed to add forget error to session history: {session_error}")
 
                 if streaming:
                     yield {"chunk": error_msg, "final_chunk": True}
@@ -459,7 +490,9 @@ async def _run_chat_logic(
             relevant_docs,
             no_think,
             web_context=web_search_result,
-            user_profile=profile_to_use
+            user_profile=profile_to_use,
+            user_id=user_id,
+            conversation_history=conversation_history
         )
     perf.record("Build LLM messages", (time.time() - step_start) * 1000)
 
@@ -704,6 +737,13 @@ Sources:
                     summary = profile_builder.get_profile_summary(updated_profile)
                     logger.debug(f"Profile Summary:\n{summary}")
 
+                    try:
+                        from backend.services.user_store import get_user_store
+                        get_user_store().update_user(user_id, {"profile": updated_profile})
+                        logger.info(f"💾 Profile persisted for user {user_id}")
+                    except Exception as e:
+                        logger.warning(f"Failed to persist profile for {user_id}: {e}")
+
             except Exception as e:
                 logger.error(f"❌ Error in profile learning: {e}", exc_info=True)
 
@@ -721,6 +761,13 @@ Sources:
 
     # Log performance summary
     logger.info(f"\n{perf.summary()}")
+
+    session_manager = get_session_manager()
+    try:
+        session_manager.add_message(user_id, "user", clean_message)
+        session_manager.add_message(user_id, "assistant", response_content)
+    except Exception as e:
+        logger.warning(f"Failed to add messages to session history: {e}")
 
     if streaming:
         async for chunk in _stream_response(response_content):
@@ -784,6 +831,15 @@ async def process_chat_message_streaming(
     # Track user activity for idle detection
     track_activity()
 
+    if user_profile is None and user_id:
+        try:
+            user_profile = build_user_profile_context(user_id)
+        except Exception as e:
+            logger.warning(f"Failed to load user profile for {user_id}: {e}")
+
+    session_manager = get_session_manager()
+    conversation_history = session_manager.get_conversation_history(user_id, max_turns=5)
+
     if any(x is None for x in [chat_client, vectorstore, memory, embeddings]):
         embeddings, vectorstore, memory, chat_client, _ = initialize_components()
 
@@ -795,7 +851,8 @@ async def process_chat_message_streaming(
         embeddings,
         streaming=True,
         user_id=user_id,
-        user_profile=user_profile
+        user_profile=user_profile,
+        conversation_history=conversation_history
     ):
         yield result
 
@@ -832,6 +889,15 @@ async def process_chat_message_async(
     # Track user activity for idle detection
     track_activity()
 
+    if user_profile is None and user_id:
+        try:
+            user_profile = build_user_profile_context(user_id)
+        except Exception as e:
+            logger.warning(f"Failed to load user profile for {user_id}: {e}")
+
+    session_manager = get_session_manager()
+    conversation_history = session_manager.get_conversation_history(user_id, max_turns=5)
+
     # OPTIMIZATION: Check response cache first
     # Skip cache if /nothink flag is present (user wants fresh thinking)
     no_think_flag = "/nothink" in message.lower() or "/no think" in message.lower()
@@ -844,7 +910,15 @@ async def process_chat_message_async(
         language = "en" if is_english else "de"
 
         # Try to get cached response
-        cached_response = cache.get(user_id, message, language)
+        system_prompt = ""
+        try:
+            config = ConfigPersistence.load_config(validate=False)
+            system_prompt = (config.get("system_prompt") or "").strip()
+        except Exception as e:
+            logger.warning(f"Failed to load system prompt for cache key: {e}")
+
+        context_fingerprint = _build_cache_fingerprint(system_prompt, conversation_history)
+        cached_response = cache.get(user_id, message, language, context_fingerprint)
 
         if cached_response:
             logger.info(f"✓ Cache hit for user={user_id} - returning cached response (saved ~24s)")
@@ -867,7 +941,8 @@ async def process_chat_message_async(
         embeddings,
         streaming=False,
         user_id=user_id,
-        user_profile=user_profile
+        user_profile=user_profile,
+        conversation_history=conversation_history
     )
     result = await anext(gen)
 
@@ -880,7 +955,14 @@ async def process_chat_message_async(
         language = "en" if is_english else "de"
 
         # Cache the response (TTL: 1 hour)
-        cache.set(user_id, message, result, language, ttl=3600)
+        cache.set(
+            user_id,
+            message,
+            result,
+            language,
+            ttl=3600,
+            context_fingerprint=context_fingerprint
+        )
         logger.debug(f"✓ Cached response for user={user_id} (ttl=3600s)")
 
     # Add cache indicator

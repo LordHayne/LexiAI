@@ -11,6 +11,7 @@ from backend.utils.model_utils import call_model_async
 from backend.memory.activity_tracker import track_activity
 from backend.memory.conversation_tracker import get_conversation_tracker
 from backend.services.session_manager import get_session_manager
+from backend.services.user_store import build_user_profile_context
 from backend.core.llm_tool_calling import select_tools, execute_tool, ToolResult
 from backend.core.llm_self_reflection import verify_answer_quality, generate_honest_fallback
 from backend.core.query_classifier import (
@@ -128,7 +129,18 @@ async def process_chat_with_tools(
         logger.warning(f"Failed to count user memories: {e}, using relevant_docs fallback")
         has_existing_memories = len(relevant_docs) > 0
 
+    user_profile = {}
+    try:
+        user_profile = build_user_profile_context(user_id)
+    except Exception as e:
+        logger.warning(f"Failed to load user profile for {user_id}: {e}")
+
     user_display_name = None
+    if user_profile:
+        display_name = str(user_profile.get("user_profile_name", "")).strip()
+        if display_name:
+            user_display_name = display_name
+
     try:
         from backend.services.user_store import get_user_store
         user = get_user_store().get_user(user_id)
@@ -200,6 +212,13 @@ async def process_chat_with_tools(
         memory=memory,
         chat_client=chat_client
     )
+
+    def _record_session(user_message: str, assistant_message: str) -> None:
+        try:
+            session_manager.add_message(user_id, "user", user_message)
+            session_manager.add_message(user_id, "assistant", assistant_message)
+        except Exception as e:
+            logger.warning(f"Failed to add messages to session history: {e}")
 
     # Phase 3: Execute plan or tools
     sources = []
@@ -448,6 +467,7 @@ async def process_chat_with_tools(
                     clarification_response = question
 
                 # FIX: Return dict instead of string for consistency
+                _record_session(clean_message, clarification_response)
                 return {
                     "response": clarification_response,
                     "relevant_memory": relevant_docs,
@@ -473,6 +493,7 @@ async def process_chat_with_tools(
                 clarification = "Ich bin mir nicht sicher, ob ich dich richtig verstanden habe. Was genau meinst du?"
             else:
                 clarification = "I'm not fully sure I understood you. What exactly do you mean?"
+            _record_session(clean_message, clarification)
             return {
                 "response": clarification,
                 "relevant_memory": relevant_docs,
@@ -489,8 +510,10 @@ async def process_chat_with_tools(
                 # Return error immediately - DON'T let LLM generate false positive
                 error_msg = ha_failed[0].error
                 logger.error(f"🚨 Home Assistant tool failed - returning error directly: {error_msg}")
+                error_response = f"❌ {error_msg}\n\nBitte prüfe den Entity-Namen in Home Assistant."
+                _record_session(clean_message, error_response)
                 return {
-                    "response": f"❌ {error_msg}\n\nBitte prüfe den Entity-Namen in Home Assistant.",
+                    "response": error_response,
                     "relevant_memory": relevant_docs,
                     "final": memory_used,
                     "source": "ha_tool_error",
@@ -502,8 +525,10 @@ async def process_chat_with_tools(
         if real_tool_results and all(not r.success for r in real_tool_results):
             error_msg = real_tool_results[0].error or "Tool failed"
             logger.error(f"🚨 All tools failed - returning error directly: {error_msg}")
+            error_response = f"❌ {error_msg}. Ich kann das gerade nicht zuverlässig beantworten."
+            _record_session(clean_message, error_response)
             return {
-                "response": f"❌ {error_msg}. Ich kann das gerade nicht zuverlässig beantworten.",
+                "response": error_response,
                 "relevant_memory": relevant_docs,
                 "final": memory_used,
                 "source": "tool_error",
@@ -539,7 +564,9 @@ async def process_chat_with_tools(
             greeting_instruction=greeting_instruction,
             has_existing_memories=has_existing_memories,
             context_summary=context_summary,
-            tool_context=tool_context
+            tool_context=tool_context,
+            user_profile=user_profile,
+            user_message=clean_message
         )
 
         # Conversation history already retrieved earlier (after query classification)
@@ -552,6 +579,10 @@ async def process_chat_with_tools(
         if conversation_history:
             messages.extend(conversation_history)
             logger.info(f"📜 Added {len(conversation_history)} previous messages to context")
+
+        if no_think:
+            think_msg = "Antworte direkt ohne zu denken." if is_german else "Respond directly without thinking."
+            messages.append({'role': 'system', 'content': think_msg})
 
         # Add current user message
         messages.append({'role': 'user', 'content': clean_message})
@@ -580,6 +611,8 @@ async def process_chat_with_tools(
 
         # Record conversation turn using memory_handler
         turn_id = record_conversation_turn(user_id, message, response_content, relevant_docs)
+
+        _record_session(clean_message, response_content)
 
         # FIX: Return dict with response AND memory entries (fast-path without self-reflection)
         return {
@@ -637,6 +670,8 @@ async def process_chat_with_tools(
 
     # Record conversation turn using memory_handler
     turn_id = record_conversation_turn(user_id, message, response_content, relevant_docs)
+
+    _record_session(clean_message, response_content)
 
     # FIX: Return dict with response AND memory entries so they appear in API response
     return {

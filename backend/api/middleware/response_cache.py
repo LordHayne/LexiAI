@@ -42,8 +42,8 @@ class ResponseCache:
         self.max_size = max_size
         self.default_ttl = default_ttl
 
-        # Cache storage: {cache_key: (response, expiry_timestamp)}
-        self.cache: OrderedDict[str, Tuple[Dict[str, Any], float]] = OrderedDict()
+        # Cache storage: {cache_key: (response, expiry_timestamp, user_id)}
+        self.cache: OrderedDict[str, Tuple[Dict[str, Any], float, str]] = OrderedDict()
 
         # Statistics
         self.stats = {
@@ -55,7 +55,13 @@ class ResponseCache:
 
         logger.info(f"✓ Response cache initialized (max_size={max_size}, ttl={default_ttl}s)")
 
-    def _generate_cache_key(self, user_id: str, message: str, language: str = "de") -> str:
+    def _generate_cache_key(
+        self,
+        user_id: str,
+        message: str,
+        language: str = "de",
+        context_fingerprint: Optional[str] = None
+    ) -> str:
         """
         Generate unique cache key for a query.
 
@@ -63,6 +69,7 @@ class ResponseCache:
             user_id: User identifier
             message: User message
             language: Language flag
+            context_fingerprint: Hash of prompt/context state
 
         Returns:
             MD5 hash as cache key
@@ -71,7 +78,8 @@ class ResponseCache:
         normalized_message = message.lower().strip()
 
         # Create cache key string
-        key_string = f"{user_id}:{language}:{normalized_message}"
+        key_suffix = context_fingerprint or ""
+        key_string = f"{user_id}:{language}:{normalized_message}:{key_suffix}"
 
         # Hash to fixed-length key
         cache_key = hashlib.md5(key_string.encode()).hexdigest()
@@ -82,7 +90,8 @@ class ResponseCache:
         self,
         user_id: str,
         message: str,
-        language: str = "de"
+        language: str = "de",
+        context_fingerprint: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Retrieve cached response if available and not expired.
@@ -95,7 +104,7 @@ class ResponseCache:
         Returns:
             Cached response dict or None if not found/expired
         """
-        cache_key = self._generate_cache_key(user_id, message, language)
+        cache_key = self._generate_cache_key(user_id, message, language, context_fingerprint)
 
         # Check if key exists
         if cache_key not in self.cache:
@@ -104,7 +113,7 @@ class ResponseCache:
             return None
 
         # Get cached entry
-        response, expiry = self.cache[cache_key]
+        response, expiry, _ = self.cache[cache_key]
 
         # Check if expired
         if time.time() > expiry:
@@ -131,7 +140,8 @@ class ResponseCache:
         message: str,
         response: Dict[str, Any],
         language: str = "de",
-        ttl: Optional[int] = None
+        ttl: Optional[int] = None,
+        context_fingerprint: Optional[str] = None
     ) -> None:
         """
         Store response in cache.
@@ -143,7 +153,7 @@ class ResponseCache:
             language: Language flag
             ttl: Time-to-live in seconds (None = use default)
         """
-        cache_key = self._generate_cache_key(user_id, message, language)
+        cache_key = self._generate_cache_key(user_id, message, language, context_fingerprint)
 
         # Calculate expiry timestamp
         ttl_seconds = ttl if ttl is not None else self.default_ttl
@@ -158,7 +168,7 @@ class ResponseCache:
             logger.debug(f"⚠️  Cache full - evicted oldest entry")
 
         # Store in cache
-        self.cache[cache_key] = (response, expiry)
+        self.cache[cache_key] = (response, expiry, user_id)
 
         # Move to end (most recent)
         self.cache.move_to_end(cache_key)
@@ -179,10 +189,10 @@ class ResponseCache:
         keys_to_remove = []
 
         for cache_key in self.cache.keys():
-            # Cache key format: md5(user_id:language:message)
+            # Cache key format: md5(user_id:language:message:context_fingerprint)
             # We need to check the actual stored data
-            response, _ = self.cache[cache_key]
-            if response.get("user_id") == user_id:
+            _, _, cached_user_id = self.cache[cache_key]
+            if cached_user_id == user_id:
                 keys_to_remove.append(cache_key)
 
         # Remove entries
@@ -210,7 +220,7 @@ class ResponseCache:
         current_time = time.time()
         keys_to_remove = []
 
-        for cache_key, (_, expiry) in self.cache.items():
+        for cache_key, (_, expiry, _) in self.cache.items():
             if current_time > expiry:
                 keys_to_remove.append(cache_key)
 

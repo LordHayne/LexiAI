@@ -3,6 +3,7 @@ Authentication Routes für LexiAI
 /register, /login, /logout, /refresh Endpoints mit Rate Limiting
 """
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Dict, Optional
 from collections import defaultdict
@@ -68,6 +69,22 @@ def _sync_user_store(user_id: str, display_name: str, email: Optional[str]) -> N
             email=email
         )
         user_store.create_user(created_user)
+
+
+def _should_use_secure_cookies(http_request: Request) -> bool:
+    env = os.environ.get("ENV", "development").lower()
+    env_override = os.environ.get("LEXI_COOKIE_SECURE")
+    if env_override is not None:
+        return env_override.lower() == "true"
+    if env in ["development", "dev", "local"]:
+        return False
+    return http_request.url.scheme == "https"
+
+
+def _update_auth_display_name(user_id: str, display_name: str) -> None:
+    if user_id in USERS_DB and display_name:
+        USERS_DB[user_id]["display_name"] = display_name
+        UserPersistence.save_users(USERS_DB)
 
 
 # Rate Limiting (In-Memory - für Produktion Redis verwenden!)
@@ -201,6 +218,7 @@ async def register(request: RegisterRequest, http_request: Request, response: Re
             "email": email_lower,
             "username": username,
             "password_hash": password_hash,
+            "display_name": username,
             "profile": {},  # Leeres Profil
             "created_at": datetime.now(timezone.utc),
             "last_login": None
@@ -236,7 +254,7 @@ async def register(request: RegisterRequest, http_request: Request, response: Re
             key="access_token",
             value=access_token,
             httponly=True,  # Cannot be accessed via JavaScript (XSS protection)
-            secure=True,    # Only sent over HTTPS
+            secure=_should_use_secure_cookies(http_request),
             samesite="lax", # CSRF protection
             max_age=900,    # 15 minutes in seconds
             path="/"        # Available for all routes
@@ -247,7 +265,7 @@ async def register(request: RegisterRequest, http_request: Request, response: Re
             key="refresh_token",
             value=refresh_token,
             httponly=True,  # Cannot be accessed via JavaScript (XSS protection)
-            secure=True,    # Only sent over HTTPS
+            secure=_should_use_secure_cookies(http_request),
             samesite="lax", # CSRF protection
             max_age=604800, # 7 days in seconds
             path="/"        # Available for all routes
@@ -258,7 +276,7 @@ async def register(request: RegisterRequest, http_request: Request, response: Re
             "user_id": user["user_id"],
             "email": user["email"],
             "username": user["username"],
-            "display_name": user["username"],
+            "display_name": user.get("display_name") or user["username"],
             "created_at": user["created_at"].isoformat(),
             "last_login": user.get("last_login").isoformat() if user.get("last_login") else None,
             "profile": user.get("profile", {})
@@ -366,7 +384,7 @@ async def login(request: LoginRequest, http_request: Request, response: Response
             key="access_token",
             value=access_token,
             httponly=True,  # Cannot be accessed via JavaScript (XSS protection)
-            secure=True,    # Only sent over HTTPS
+            secure=_should_use_secure_cookies(http_request),
             samesite="lax", # CSRF protection (can use "strict" for more security)
             max_age=900,    # 15 minutes in seconds
             path="/"        # Available for all routes
@@ -377,7 +395,7 @@ async def login(request: LoginRequest, http_request: Request, response: Response
             key="refresh_token",
             value=refresh_token,
             httponly=True,  # Cannot be accessed via JavaScript (XSS protection)
-            secure=True,    # Only sent over HTTPS
+            secure=_should_use_secure_cookies(http_request),
             samesite="lax", # CSRF protection
             max_age=refresh_days * 86400, # days in seconds
             path="/"        # Available for all routes
@@ -388,7 +406,7 @@ async def login(request: LoginRequest, http_request: Request, response: Response
             "user_id": user["user_id"],
             "email": user["email"],
             "username": user["username"],
-            "display_name": user["username"],
+            "display_name": user.get("display_name") or user["username"],
             "created_at": user["created_at"].isoformat(),
             "last_login": user["last_login"].isoformat() if user.get("last_login") else None,
             "profile": user.get("profile", {})
@@ -493,7 +511,7 @@ async def refresh_token(
             key="access_token",
             value=new_access_token,
             httponly=True,  # XSS protection
-            secure=True,    # HTTPS only
+            secure=_should_use_secure_cookies(http_request),
             samesite="lax", # CSRF protection
             max_age=900,    # 15 minutes
             path="/"
@@ -504,7 +522,7 @@ async def refresh_token(
             key="refresh_token",
             value=new_refresh_token,
             httponly=True,  # XSS protection
-            secure=True,    # HTTPS only
+            secure=_should_use_secure_cookies(http_request),
             samesite="lax", # CSRF protection
             max_age=refresh_days * 86400, # days
             path="/"

@@ -4,10 +4,108 @@ LLM-based Relevance Check for Web Search Results
 import logging
 from typing import List, Dict, Any, Tuple
 import json
-import re
 
 logger = logging.getLogger(__name__)
 
+
+def _strip_code_fences(text: str) -> str:
+    cleaned_text = text.strip()
+    if cleaned_text.startswith("```"):
+        lines = cleaned_text.split("\n")
+        cleaned_text = "\n".join(lines[1:])
+        if cleaned_text.endswith("```"):
+            cleaned_text = cleaned_text[:-3].strip()
+    return cleaned_text
+
+
+def _extract_json_object(text: str) -> str:
+    start_idx = text.find("{")
+    if start_idx == -1:
+        raise ValueError("No JSON object found in response")
+
+    brace_count = 0
+    in_string = False
+    escape = False
+
+    for i in range(start_idx, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+                continue
+            if ch == "\\":
+                escape = True
+                continue
+            if ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            brace_count += 1
+        elif ch == "}":
+            brace_count -= 1
+            if brace_count == 0:
+                return text[start_idx:i + 1]
+
+    raise ValueError("No complete JSON object found in response")
+
+
+def _sanitize_json_str(json_str: str) -> str:
+    sanitized = []
+    in_string = False
+    escape = False
+
+    for ch in json_str:
+        if in_string:
+            if escape:
+                sanitized.append(ch)
+                escape = False
+                continue
+            if ch == "\\":
+                sanitized.append(ch)
+                escape = True
+                continue
+            if ch == '"':
+                in_string = False
+                sanitized.append(ch)
+                continue
+            if ord(ch) < 0x20:
+                if ch == "\n":
+                    sanitized.append("\\n")
+                elif ch == "\r":
+                    sanitized.append("\\r")
+                elif ch == "\t":
+                    sanitized.append("\\t")
+                else:
+                    sanitized.append(f"\\u{ord(ch):04x}")
+                continue
+            sanitized.append(ch)
+        else:
+            if ch == '"':
+                in_string = True
+            sanitized.append(ch)
+
+    return "".join(sanitized)
+
+
+def _parse_llm_json(response_text: str) -> Any:
+    cleaned_text = _strip_code_fences(response_text)
+    json_str = _extract_json_object(cleaned_text)
+
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError as e:
+        logger.debug(f"Strict JSON parse failed: {e}")
+
+    try:
+        return json.loads(json_str, strict=False)
+    except json.JSONDecodeError as e:
+        logger.debug(f"Lenient JSON parse failed: {e}")
+
+    sanitized = _sanitize_json_str(json_str)
+    return json.loads(sanitized, strict=False)
 
 async def check_result_relevance(
     question: str,
@@ -110,35 +208,7 @@ Bewerte die Relevanz jedes Ergebnisses zur Frage."""
 
         # Parse JSON - handle markdown code blocks
         try:
-            # Remove markdown code block markers if present
-            cleaned_text = response_text.strip()
-            if cleaned_text.startswith('```'):
-                # Remove opening ```json or ```
-                lines = cleaned_text.split('\n')
-                cleaned_text = '\n'.join(lines[1:])  # Skip first line
-                # Remove closing ```
-                if cleaned_text.endswith('```'):
-                    cleaned_text = cleaned_text[:-3].strip()
-
-            # Try to extract JSON by finding matching braces
-            start_idx = cleaned_text.find('{')
-            if start_idx == -1:
-                raise ValueError("No JSON object found in response")
-
-            # Find matching closing brace
-            brace_count = 0
-            end_idx = start_idx
-            for i in range(start_idx, len(cleaned_text)):
-                if cleaned_text[i] == '{':
-                    brace_count += 1
-                elif cleaned_text[i] == '}':
-                    brace_count -= 1
-                    if brace_count == 0:
-                        end_idx = i + 1
-                        break
-
-            json_str = cleaned_text[start_idx:end_idx]
-            evaluation = json.loads(json_str)
+            evaluation = _parse_llm_json(response_text)
 
             result_scores = evaluation.get('results', [])
             overall_quality = evaluation.get('overall_quality', 0.5)
@@ -268,9 +338,8 @@ Sollte die Suche mit besserer Query wiederholt werden?"""
         response_text = response.content if hasattr(response, 'content') else str(response)
 
         # Parse JSON
-        json_match = re.search(r'\{[^}]+\}', response_text, re.DOTALL)
-        if json_match:
-            decision = json.loads(json_match.group())
+        try:
+            decision = _parse_llm_json(response_text)
 
             should_refine = decision.get('refine', False)
             refined_query = decision.get('query', '')
@@ -282,8 +351,9 @@ Sollte die Suche mit besserer Query wiederholt werden?"""
             else:
                 return False, ""
 
-        else:
-            logger.warning(f"Could not parse refinement response: {response_text[:200]}")
+        except (json.JSONDecodeError, ValueError) as parse_error:
+            logger.warning(f"Could not parse refinement response: {parse_error}")
+            logger.debug(f"Response was: {response_text[:200]}")
             return False, ""
 
     except Exception as e:

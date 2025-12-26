@@ -12,7 +12,7 @@ import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Any
 from filelock import FileLock
 
 from backend.models.user import User, UserTier
@@ -278,3 +278,20 @@ def get_user_store() -> JSONUserStore:
     if _user_store is None:
         _user_store = JSONUserStore()
     return _user_store
+
+
+def build_user_profile_context(user_id: str) -> Dict[str, Any]:
+    """
+    Build a user profile context dict for personalization prompts.
+
+    Includes the stored profile plus a display name if available.
+    """
+    user = get_user_store().get_user(user_id)
+    if not user:
+        return {}
+
+    profile = dict(user.profile) if user.profile else {}
+    display_name = (user.display_name or "").strip()
+    if display_name and display_name.lower() not in {"anonymous user", "anonymer benutzer"}:
+        profile.setdefault("user_profile_name", display_name)
+    return profile

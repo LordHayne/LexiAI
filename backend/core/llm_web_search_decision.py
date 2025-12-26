@@ -45,7 +45,18 @@ async def should_perform_web_search_llm(
         logger.info("🔍 Explicit search request detected - triggering web search")
         return True, "Explicit web search request"
 
-    # 2. TEMPORAL QUERIES (high priority - should trigger search)
+    # 2. PERSONAL QUERIES (never use web search)
+    personal_indicators = [
+        "mein name", "my name", "ich heiße", "ich heisse", "wer bin ich",
+        "kennst du mich", "remember me", "merkst du dir", "du solltest das wissen",
+        "hast du dir gemerkt", "weißt du noch", "weißt du wie ich heiße"
+    ]
+
+    if any(indicator in message_lower for indicator in personal_indicators):
+        logger.info("✓ No web search - personal query")
+        return False, "Personal query - no search needed"
+
+    # 3. TEMPORAL QUERIES (high priority - should trigger search)
     temporal_indicators = [
         "neueste", "aktuelle", "heute", "jetzt", "gerade",
         "latest", "current", "today", "now", "recent",

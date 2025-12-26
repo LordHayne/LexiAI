@@ -37,6 +37,7 @@ class ProfileContextBuilder:
 
         # Kategorie-Mapping für lesbare Namen
         category_display = {
+            "user_profile_name": "Name",
             "user_profile_occupation": "Beruf",
             "user_profile_interests": "Interessen",
             "user_profile_preferences": "Präferenzen",
@@ -51,6 +52,7 @@ class ProfileContextBuilder:
 
         # Priorisierte Kategorien (wichtigste zuerst)
         priority_categories = [
+            "user_profile_name",
             "user_profile_occupation",
             "user_profile_technical_level",
             "user_profile_interests",
@@ -155,6 +157,7 @@ Bitte berücksichtige diese Informationen bei deinen Antworten und passe deinen 
 
         # Keyword-Mapping für Relevanz
         relevance_keywords = {
+            "user_profile_name": ["name", "heiße", "heisse", "ich bin", "mein name"],
             "user_profile_occupation": ["arbeit", "beruf", "job", "karriere", "firma"],
             "user_profile_interests": ["hobby", "freizeit", "interesse", "mag", "gerne"],
             "user_profile_technical_level": ["technisch", "programmier", "code", "entwickl", "software"],

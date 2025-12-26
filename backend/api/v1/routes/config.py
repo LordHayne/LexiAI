@@ -18,6 +18,7 @@ from backend.config.middleware_config import MiddlewareConfig
 from backend.config.persistence import ConfigPersistence
 from backend.config.security_config import SecurityConfig
 from backend.core.bootstrap import initialize_components, ConfigurationError
+from backend.api.middleware.response_cache import clear_response_cache
 
 # Setup logging
 logger = logging.getLogger("lexi_middleware.config")
@@ -127,6 +128,8 @@ async def update_config(request: Request):
         Dict: Success response with updated configuration details
     """
     try:
+        previous_config = ConfigPersistence.load_config(validate=False)
+        previous_prompt = (previous_config.get("system_prompt") or "").strip()
         request_data = await request.json()
         sanitized_data = _sanitize_config_for_logging(request_data)
         logger.info(f"Updating configuration with data: {sanitized_data}")
@@ -293,14 +296,19 @@ async def update_config(request: Request):
         }
 
         persistence_success = ConfigPersistence.save_config(persist_config)
+        new_prompt = (request_data.get("system_prompt") or "").strip()
+        if persistence_success and new_prompt != previous_prompt:
+            clear_response_cache()
+            logger.info("Cleared response cache due to system_prompt change")
 
         # Reinitialize components if necessary
         reinit_success = None
         if need_reinit:
             try:
                 logger.info("Reinitializing components due to configuration changes...")
-                from backend.core.component_cache import get_cached_components
-                get_cached_components(force_recreate=True)
+                from backend.core.component_cache import clear_component_cache, get_cached_components
+                clear_component_cache()
+                get_cached_components(force_recreate=force_recreate)
                 reinit_success = True
                 logger.info("Components reinitialized successfully")
             except ConfigurationError as e:
@@ -436,38 +444,44 @@ async def test_home_assistant_connection(request: Request):
         from backend.services.home_assistant import HomeAssistantService
 
         test_service = HomeAssistantService(url=ha_url, token=ha_token)
+        response: Optional[JSONResponse] = None
 
-        if not test_service.is_enabled():
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "success": False,
-                    "error": "Home Assistant Service konnte nicht initialisiert werden"
-                }
-            )
+        try:
+            if not test_service.is_enabled():
+                response = JSONResponse(
+                    status_code=200,
+                    content={
+                        "success": False,
+                        "error": "Home Assistant Service konnte nicht initialisiert werden"
+                    }
+                )
+            else:
+                # Try to list entities as connection test
+                result = await test_service.list_entities()
 
-        # Try to list entities as connection test
-        result = await test_service.list_entities()
+                if result.get("success"):
+                    entity_count = result.get("count", 0)
+                    response = JSONResponse(
+                        status_code=200,
+                        content={
+                            "success": True,
+                            "message": f"Verbindung erfolgreich! {entity_count} Entitäten gefunden.",
+                            "entity_count": entity_count,
+                            "entities": result.get("entities", [])[:5]  # First 5 entities
+                        }
+                    )
+                else:
+                    response = JSONResponse(
+                        status_code=200,
+                        content={
+                            "success": False,
+                            "error": result.get("error", "Verbindungstest fehlgeschlagen")
+                        }
+                    )
+        finally:
+            await test_service.close()
 
-        if result.get("success"):
-            entity_count = result.get("count", 0)
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "success": True,
-                    "message": f"Verbindung erfolgreich! {entity_count} Entitäten gefunden.",
-                    "entity_count": entity_count,
-                    "entities": result.get("entities", [])[:5]  # First 5 entities
-                }
-            )
-        else:
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "success": False,
-                    "error": result.get("error", "Verbindungstest fehlgeschlagen")
-                }
-            )
+        return response
 
     except Exception as e:
         logger.error(f"Error testing HA connection: {e}")

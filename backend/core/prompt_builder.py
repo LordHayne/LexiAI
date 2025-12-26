@@ -10,9 +10,69 @@ Extracted from chat_processing_with_tools.py (Lines 252-680)
 
 import logging
 import os
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 
 logger = logging.getLogger(__name__)
+
+_system_prompt_cache = None
+_system_prompt_mtime = None
+
+
+def _get_configured_system_prompt() -> str:
+    """
+    Load the configured system prompt from persistent_config.json.
+
+    Uses a lightweight mtime cache so UI updates take effect without restart.
+    """
+    global _system_prompt_cache, _system_prompt_mtime
+    try:
+        from backend.config.persistence import ConfigPersistence
+
+        config_path = ConfigPersistence.CONFIG_FILE
+        if not config_path.exists():
+            _system_prompt_cache = ""
+            _system_prompt_mtime = None
+            return ""
+
+        mtime = config_path.stat().st_mtime
+        if _system_prompt_cache is None or _system_prompt_mtime != mtime:
+            config = ConfigPersistence.load_config(validate=False)
+            prompt = config.get("system_prompt", "")
+            if isinstance(prompt, str):
+                prompt = prompt.strip()
+            else:
+                prompt = ""
+            _system_prompt_cache = prompt
+            _system_prompt_mtime = mtime
+
+        return _system_prompt_cache or ""
+    except Exception as exc:
+        logger.warning(f"Failed to load system prompt from persistent config: {exc}")
+        return ""
+
+
+def _escape_format(value: str) -> str:
+    if not value:
+        return ""
+    return value.replace("{", "{{").replace("}", "}}")
+
+
+def _maybe_apply_profile_context(
+    base_prompt: str,
+    user_profile: Optional[Dict[str, Any]],
+    user_message: Optional[str]
+) -> str:
+    if not base_prompt or not user_profile or not user_message:
+        return base_prompt
+
+    try:
+        from backend.services.profile_context import ProfileContextBuilder
+        profile_context_builder = ProfileContextBuilder()
+        if profile_context_builder.should_use_profile(user_message, user_profile):
+            return profile_context_builder.build_personalized_system_prompt(base_prompt, user_profile)
+    except Exception as exc:
+        logger.warning(f"Failed to apply profile context: {exc}")
+    return base_prompt
 
 
 def _get_memory_threshold() -> float:
@@ -140,7 +200,9 @@ def build_system_prompt(
     greeting_instruction: str,
     has_existing_memories: bool,
     context_summary: str = "",
-    tool_context: str = ""
+    tool_context: str = "",
+    user_profile: Optional[Dict[str, Any]] = None,
+    user_message: Optional[str] = None
 ) -> str:
     """
     Build complete system prompt based on scenario and language.
@@ -175,11 +237,15 @@ def build_system_prompt(
                 "Use them cautiously and ask a follow-up if the answer would be uncertain otherwise.\n"
             )
 
+    configured_prompt = _get_configured_system_prompt()
+
     if language == "de":
         # German prompts
         if prompt_type == "ha_control":
             # Home Assistant control used
-            system_prompt = """Du bist Lexi, ein hilfreicher AI-Assistent mit Smart Home Steuerung.
+            base_prompt = configured_prompt or "Du bist Lexi, ein hilfreicher AI-Assistent mit Smart Home Steuerung."
+            base_prompt = _maybe_apply_profile_context(base_prompt, user_profile, user_message)
+            system_prompt = """{base_prompt}
 
 Du hast ein Smart Home Gerät gesteuert oder abgefragt.
 
@@ -204,7 +270,9 @@ Memory Kontext:
 {context}"""
 
         elif prompt_type == "ha_automation":
-            system_prompt = """Du bist Lexi, ein hilfreicher AI-Assistent mit Smart Home Automations-Funktionen.
+            base_prompt = configured_prompt or "Du bist Lexi, ein hilfreicher AI-Assistent mit Smart Home Automations-Funktionen."
+            base_prompt = _maybe_apply_profile_context(base_prompt, user_profile, user_message)
+            system_prompt = """{base_prompt}
 
 Du hast eine Automation oder ein Script vorbereitet oder gespeichert.
 
@@ -224,7 +292,12 @@ Memory Kontext:
 
         elif prompt_type == "tools_used":
             # Other tools used (not HA)
-            system_prompt = """Du bist Lexi, ein hilfreicher und freundlicher AI-Assistent.
+            base_prompt = configured_prompt or "Du bist Lexi, ein hilfreicher und freundlicher AI-Assistent."
+            base_prompt = _maybe_apply_profile_context(base_prompt, user_profile, user_message)
+            system_prompt = """{base_prompt}
+
+{user_context}
+{greeting_instruction}
 
 Du hast Tools verwendet um Informationen zu sammeln. Nutze die Tool-Ergebnisse um die Frage zu beantworten.
 
@@ -261,7 +334,9 @@ Tool-Ergebnisse:
 - WIEDERHOLE nur was der User gesagt hat, füge NICHTS hinzu!
 """
 
-            system_prompt = """Du bist Lexi, ein hilfreicher und freundlicher AI-Assistent mit Langzeitgedächtnis.
+            base_prompt = configured_prompt or "Du bist Lexi, ein hilfreicher und freundlicher AI-Assistent mit Langzeitgedächtnis."
+            base_prompt = _maybe_apply_profile_context(base_prompt, user_profile, user_message)
+            system_prompt = """{base_prompt}
 
 {user_context}
 {greeting_instruction}
@@ -296,7 +371,9 @@ Memory Kontext (frühere Gespräche):
     else:  # English
         if prompt_type == "tools_used":
             # Tools used (including HA in English)
-            system_prompt = """You are Lexi, a helpful and friendly AI assistant.
+            base_prompt = configured_prompt or "You are Lexi, a helpful and friendly AI assistant."
+            base_prompt = _maybe_apply_profile_context(base_prompt, user_profile, user_message)
+            system_prompt = """{base_prompt}
 
 {user_context}
 {greeting_instruction}
@@ -320,7 +397,9 @@ Tool Results:
 {low_confidence_hint}"""
 
         else:  # no_tools
-            system_prompt = """You are Lexi, a helpful and friendly AI assistant with long-term memory.
+            base_prompt = configured_prompt or "You are Lexi, a helpful and friendly AI assistant with long-term memory."
+            base_prompt = _maybe_apply_profile_context(base_prompt, user_profile, user_message)
+            system_prompt = """{base_prompt}
 
 {user_context}
 {greeting_instruction}
@@ -345,12 +424,13 @@ Memory Context (previous conversations):
 
     # Format the prompt with context and tools
     formatted_prompt = system_prompt.format(
-        context=context_summary or "No relevant memory context",
-        tools=tool_context or "No tools were used",
-        user_context=user_context,
-        greeting_instruction=greeting_instruction,
-        greeting_rules=greeting_rules,
-        low_confidence_hint=low_confidence_hint
+        context=_escape_format(context_summary or "No relevant memory context"),
+        tools=_escape_format(tool_context or "No tools were used"),
+        user_context=_escape_format(user_context),
+        greeting_instruction=_escape_format(greeting_instruction),
+        greeting_rules=_escape_format(greeting_rules),
+        low_confidence_hint=_escape_format(low_confidence_hint),
+        base_prompt=_escape_format(base_prompt)
     )
 
     return formatted_prompt

@@ -9,6 +9,129 @@ import re
 logger = logging.getLogger(__name__)
 
 
+def _strip_code_fences(text: str) -> str:
+    cleaned_text = text.strip()
+    if cleaned_text.startswith("```"):
+        lines = cleaned_text.split("\n")
+        cleaned_text = "\n".join(lines[1:])
+        if cleaned_text.endswith("```"):
+            cleaned_text = cleaned_text[:-3].strip()
+    return cleaned_text
+
+
+def _extract_json_object(text: str) -> str:
+    start_idx = text.find("{")
+    if start_idx == -1:
+        raise ValueError("No JSON object found in response")
+
+    brace_count = 0
+    in_string = False
+    escape = False
+
+    for i in range(start_idx, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+                continue
+            if ch == "\\":
+                escape = True
+                continue
+            if ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            brace_count += 1
+        elif ch == "}":
+            brace_count -= 1
+            if brace_count == 0:
+                return text[start_idx:i + 1]
+
+    raise ValueError("No complete JSON object found in response")
+
+
+def _sanitize_json_str(json_str: str) -> str:
+    sanitized = []
+    in_string = False
+    escape = False
+
+    for ch in json_str:
+        if in_string:
+            if escape:
+                sanitized.append(ch)
+                escape = False
+                continue
+            if ch == "\\":
+                sanitized.append(ch)
+                escape = True
+                continue
+            if ch == '"':
+                in_string = False
+                sanitized.append(ch)
+                continue
+            if ord(ch) < 0x20:
+                if ch == "\n":
+                    sanitized.append("\\n")
+                elif ch == "\r":
+                    sanitized.append("\\r")
+                elif ch == "\t":
+                    sanitized.append("\\t")
+                else:
+                    sanitized.append(f"\\u{ord(ch):04x}")
+                continue
+            sanitized.append(ch)
+        else:
+            if ch == '"':
+                in_string = True
+            sanitized.append(ch)
+
+    return "".join(sanitized)
+
+
+def _parse_llm_json(response_text: str) -> Any:
+    cleaned_text = _strip_code_fences(response_text)
+    json_str = _extract_json_object(cleaned_text)
+
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError as e:
+        logger.debug(f"Strict JSON parse failed: {e}")
+
+    try:
+        return json.loads(json_str, strict=False)
+    except json.JSONDecodeError as e:
+        logger.debug(f"Lenient JSON parse failed: {e}")
+
+    sanitized = _sanitize_json_str(json_str)
+    return json.loads(sanitized, strict=False)
+
+
+def _evaluate_reflection_result(verification: dict) -> Tuple[bool, Optional[str]]:
+    is_valid = verification.get("valid", True)
+    confidence = verification.get("confidence", 0.5)
+    issue = verification.get("issue", "")
+    suggestion = verification.get("suggestion", "")
+
+    issue_text = issue.strip()
+    suggestion_text = suggestion.strip()
+    combined_issue = issue_text
+    if suggestion_text:
+        combined_issue = f"{issue_text} | {suggestion_text}" if issue_text else suggestion_text
+
+    if not is_valid and confidence >= 0.85:
+        logger.warning(f"⚠️ Self-Reflection detected issue (conf={confidence:.2f}): {issue}")
+        return False, combined_issue or None
+    if not is_valid and confidence >= 0.7:
+        logger.info(f"ℹ️ Self-Reflection uncertain (conf={confidence:.2f}): {issue} - allowing anyway")
+        return True, None
+
+    logger.info(f"✅ Self-Reflection: Answer valid (conf={confidence:.2f})")
+    return True, None
+
+
 async def verify_answer_quality(
     question: str,
     answer: str,
@@ -187,59 +310,11 @@ Ist diese Antwort plausibel oder halluziniert?"""
         ]
 
         response = await chat_client.ainvoke(messages)
-        response_text = response.content if hasattr(response, 'content') else str(response)
+        response_text = response.content if hasattr(response, "content") else str(response)
 
-        # Parse JSON - handle markdown code blocks
-        cleaned_text = response_text.strip()
-        if cleaned_text.startswith('```'):
-            # Remove opening ```json or ```
-            lines = cleaned_text.split('\n')
-            cleaned_text = '\n'.join(lines[1:])  # Skip first line
-            # Remove closing ```
-            if cleaned_text.endswith('```'):
-                cleaned_text = cleaned_text[:-3].strip()
-
-        # Try to extract JSON by finding matching braces
         try:
-            start_idx = cleaned_text.find('{')
-            if start_idx == -1:
-                raise ValueError("No JSON object found in response")
-
-            # Find matching closing brace
-            brace_count = 0
-            end_idx = start_idx
-            for i in range(start_idx, len(cleaned_text)):
-                if cleaned_text[i] == '{':
-                    brace_count += 1
-                elif cleaned_text[i] == '}':
-                    brace_count -= 1
-                    if brace_count == 0:
-                        end_idx = i + 1
-                        break
-
-            json_str = cleaned_text[start_idx:end_idx]
-            verification = json.loads(json_str)
-
-            is_valid = verification.get('valid', True)
-            confidence = verification.get('confidence', 0.5)
-            issue = verification.get('issue', '')
-            suggestion = verification.get('suggestion', '')
-
-            # Erhöhter Threshold: Nur bei hoher Confidence ablehnen (war: 0.7)
-            if not is_valid and confidence >= 0.85:
-                logger.warning(f"⚠️ Self-Reflection detected issue (conf={confidence:.2f}): {issue}")
-                return False, f"{issue} | {suggestion}"
-            elif not is_valid and confidence >= 0.7:
-                # Graubereich: Loggen aber nicht ablehnen
-                logger.info(f"ℹ️ Self-Reflection uncertain (conf={confidence:.2f}): {issue} - allowing anyway")
-                return True, None
-            else:
-                logger.info(f"✅ Self-Reflection: Answer valid (conf={confidence:.2f})")
-                return True, None
-
-            # Fallback: allow if not caught by above conditions
-            return True, None
-
+            verification = _parse_llm_json(response_text)
+            return _evaluate_reflection_result(verification)
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"Could not parse self-reflection response: {e}")
             logger.debug(f"Response was: {response_text[:500]}")
@@ -255,46 +330,8 @@ Ist diese Antwort plausibel oder halluziniert?"""
                 ]
                 retry_response = await chat_client.ainvoke(retry_messages)
                 retry_text = retry_response.content if hasattr(retry_response, "content") else str(retry_response)
-                cleaned_retry = retry_text.strip()
-
-                if cleaned_retry.startswith('```'):
-                    lines = cleaned_retry.split('\n')
-                    cleaned_retry = '\n'.join(lines[1:])
-                    if cleaned_retry.endswith('```'):
-                        cleaned_retry = cleaned_retry[:-3].strip()
-
-                start_idx = cleaned_retry.find('{')
-                if start_idx == -1:
-                    raise ValueError("No JSON object found in retry response")
-
-                brace_count = 0
-                end_idx = start_idx
-                for i in range(start_idx, len(cleaned_retry)):
-                    if cleaned_retry[i] == '{':
-                        brace_count += 1
-                    elif cleaned_retry[i] == '}':
-                        brace_count -= 1
-                        if brace_count == 0:
-                            end_idx = i + 1
-                            break
-
-                json_str = cleaned_retry[start_idx:end_idx]
-                verification = json.loads(json_str)
-
-                is_valid = verification.get('valid', True)
-                confidence = verification.get('confidence', 0.5)
-                issue = verification.get('issue', '')
-                suggestion = verification.get('suggestion', '')
-
-                if not is_valid and confidence >= 0.85:
-                    logger.warning(f"⚠️ Self-Reflection detected issue (conf={confidence:.2f}): {issue}")
-                    return False, f"{issue} | {suggestion}"
-                elif not is_valid and confidence >= 0.7:
-                    logger.info(f"ℹ️ Self-Reflection uncertain (conf={confidence:.2f}): {issue} - allowing anyway")
-                    return True, None
-                else:
-                    logger.info(f"✅ Self-Reflection: Answer valid (conf={confidence:.2f})")
-                    return True, None
+                verification = _parse_llm_json(retry_text)
+                return _evaluate_reflection_result(verification)
             except Exception as retry_error:
                 logger.warning(f"Self-reflection retry failed: {retry_error}")
                 return True, None  # Default to valid if can't parse

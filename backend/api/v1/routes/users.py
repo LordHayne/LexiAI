@@ -206,6 +206,13 @@ async def update_current_user(request: Request, updates: UserUpdateRequest):
         logger.warning(f"User {user_id} not found during update")
         raise HTTPException(status_code=404, detail="User not found")
 
+    if "display_name" in update_dict:
+        try:
+            from backend.api.v1.routes.auth import _update_auth_display_name
+            _update_auth_display_name(user_id, update_dict["display_name"])
+        except Exception as e:
+            logger.warning(f"Failed to sync display_name to auth store for {user_id}: {e}")
+
     logger.info(f"Updated user {user_id}: {list(update_dict.keys())}")
 
     return UserResponse(

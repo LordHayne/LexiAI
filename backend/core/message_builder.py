@@ -1,21 +1,31 @@
 import logging
 import json
+import re
 from pathlib import Path
 
 logger = logging.getLogger("memory_decisions")
 
 _config_cache = None
+_config_mtime = None
 
 def get_config():
-    global _config_cache
-    if _config_cache is None:
-        config_path = Path(__file__).parent.parent / "config" / "persistent_config.json"
-        try:
+    global _config_cache, _config_mtime
+    config_path = Path(__file__).parent.parent / "config" / "persistent_config.json"
+    try:
+        if not config_path.exists():
+            _config_cache = {}
+            _config_mtime = None
+            return _config_cache
+
+        mtime = config_path.stat().st_mtime
+        if _config_cache is None or _config_mtime != mtime:
             with config_path.open(encoding="utf-8") as f:
                 _config_cache = json.load(f)
-        except Exception as e:
-            logger.error(f"Fehler beim Laden der Konfiguration: {e}")
-            _config_cache = {}
+            _config_mtime = mtime
+    except Exception as e:
+        logger.error(f"Fehler beim Laden der Konfiguration: {e}")
+        _config_cache = {}
+        _config_mtime = None
     return _config_cache
 
 def build_messages(message: str, is_german: bool, context_docs=None, no_think=False, web_context=None, user_profile=None, user_id: str = "user", conversation_history: list = None) -> list[dict]:
@@ -42,12 +52,23 @@ def build_messages(message: str, is_german: bool, context_docs=None, no_think=Fa
     is_first_interaction = not conversation_history or len(conversation_history) == 0
 
     # Personalize greeting based on user
-    user_context = f"Du sprichst gerade mit {user_id}." if user_id != "user" else ""
+    display_name = ""
+    if user_profile:
+        for key in ("user_profile_name", "display_name", "name"):
+            candidate = str(user_profile.get(key, "")).strip()
+            if candidate:
+                display_name = candidate
+                break
 
-    if is_first_interaction and user_id != "user":
-        greeting_instruction = f"Da dies deine erste Interaktion mit {user_id} in dieser Session ist, begrüße ihn freundlich mit seinem Namen."
+    is_generated_id = bool(re.match(r"^user_[0-9]+_", user_id)) or bool(re.match(r"^[0-9a-f]{8}-", user_id))
+    user_label = display_name or (user_id if user_id not in {"user", "default"} and not is_generated_id else "")
+
+    user_context = f"Du sprichst gerade mit {user_label}." if user_label else ""
+
+    if is_first_interaction and user_label:
+        greeting_instruction = f"Da dies deine erste Interaktion mit {user_label} in dieser Session ist, begrüße ihn freundlich mit seinem Namen."
     else:
-        greeting_instruction = f"Du befindest dich in einer laufenden Konversation mit {user_id}. Beziehe dich auf den vorherigen Gesprächskontext."
+        greeting_instruction = f"Du befindest dich in einer laufenden Konversation mit {user_label}. Beziehe dich auf den vorherigen Gesprächskontext." if user_label else ""
 
     default_prompt = f"""Du bist Lexi, eine intelligente und hilfsbereite KI-Assistentin.
 
