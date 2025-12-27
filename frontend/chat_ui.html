@@ -177,25 +177,6 @@
             gap: 12px;
         }
 
-        .voice-link-btn {
-            background: rgba(255, 255, 255, 0.15);
-            border: 1px solid rgba(255, 255, 255, 0.4);
-            color: white;
-            padding: 10px 16px;
-            border-radius: 999px;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            transition: all 0.2s ease;
-            backdrop-filter: blur(10px);
-        }
-
-        .voice-link-btn:hover {
-            background: rgba(255, 255, 255, 0.25);
-            transform: translateY(-1px);
-        }
-
         .settings-btn {
             background: rgba(255, 255, 255, 0.15);
             border: none;
@@ -855,9 +836,6 @@
                 </div>
             </div>
             <div class="header-actions">
-                <a href="#voice-controls" class="voice-link-btn" title="Zum Voicechat springen">
-                    🎤 Voicechat
-                </a>
                 <button class="settings-btn" onclick="window.location.href='/frontend/pages/config_ui.html'" title="Einstellungen">
                     <svg class="settings-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                         <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/>
@@ -1516,11 +1494,12 @@
             mediaRecorder: null,
             audioChunks: [],
             startTime: 0,
-            statusIndicator: null
+            statusIndicator: null,
+            mimeType: null
         };
 
         const REALTIME_VOICE_ENABLED = true;
-        const VOICE_WS_URL = API_BASE_URL.replace(/^http/, 'ws') + '/api/audio/ws';
+        const VOICE_WS_BASE_URL = API_BASE_URL.replace(/^http/, 'ws') + '/api/audio/ws';
 
         const voiceStream = {
             ws: null,
@@ -1535,13 +1514,41 @@
             currentUserMsg: null,
             currentAssistantMsg: null,
             assistantText: '',
-            sampleRate: 16000
+            sampleRate: 16000,
+            userId: null
         };
         let activeVoiceMode = 'legacy';
 
         // DOM Elements
         const voiceBtn = document.getElementById('voiceBtn');
         const voiceResponse = document.getElementById('voiceResponse');
+
+        function getVoiceWsUrl() {
+            const url = new URL(VOICE_WS_BASE_URL);
+            const userId = window.userManager ? userManager.getUserId() : localStorage.getItem('lexi_user_id');
+            if (userId) {
+                url.searchParams.set('user_id', userId);
+            }
+            return url.toString();
+        }
+
+        function getSupportedRecorderMimeType() {
+            if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
+                return null;
+            }
+            const candidates = [
+                'audio/webm;codecs=opus',
+                'audio/webm',
+                'audio/mp4',
+                'audio/aac'
+            ];
+            for (const type of candidates) {
+                if (MediaRecorder.isTypeSupported(type)) {
+                    return type;
+                }
+            }
+            return null;
+        }
 
         function stopAllAudioPlayback() {
             document.querySelectorAll('audio').forEach((audio) => {
@@ -1636,8 +1643,29 @@
             return btoa(binary);
         }
 
+        function handleVoiceSocketDisconnect(message) {
+            if (voiceStream.recording || voiceRecording.isRecording) {
+                stopRealtimeVoice({ sendStop: false }).catch(err => {
+                    console.warn('Realtime stop failed:', err);
+                });
+                voiceRecording.isRecording = false;
+            }
+            resetVoiceUI();
+            if (message) {
+                showVoiceStatus(message, 'error');
+                setTimeout(() => hideVoiceStatus(), 3000);
+            }
+        }
+
         function connectVoiceWs() {
             if (!REALTIME_VOICE_ENABLED) return Promise.resolve(false);
+            const targetUserId = window.userManager ? userManager.getUserId() : localStorage.getItem('lexi_user_id');
+            if (voiceStream.connected && voiceStream.userId !== targetUserId) {
+                if (voiceStream.ws) {
+                    voiceStream.ws.close();
+                }
+                voiceStream.connected = false;
+            }
             if (voiceStream.connected || voiceStream.connecting) {
                 return Promise.resolve(voiceStream.connected);
             }
@@ -1645,22 +1673,35 @@
             voiceStream.connecting = true;
             return new Promise((resolve) => {
                 try {
-                    voiceStream.ws = new WebSocket(VOICE_WS_URL);
+                    voiceStream.ws = new WebSocket(getVoiceWsUrl());
 
                     voiceStream.ws.onopen = () => {
                         voiceStream.connected = true;
                         voiceStream.connecting = false;
+                        voiceStream.userId = targetUserId || null;
                         resolve(true);
                     };
 
                     voiceStream.ws.onclose = () => {
+                        const wasRecording = voiceStream.recording || voiceRecording.isRecording;
                         voiceStream.connected = false;
                         voiceStream.connecting = false;
+                        voiceStream.ws = null;
+                        voiceStream.userId = null;
+                        if (wasRecording) {
+                            handleVoiceSocketDisconnect('Voice-Verbindung getrennt');
+                        }
                     };
 
                     voiceStream.ws.onerror = () => {
+                        const wasRecording = voiceStream.recording || voiceRecording.isRecording;
                         voiceStream.connected = false;
                         voiceStream.connecting = false;
+                        voiceStream.ws = null;
+                        voiceStream.userId = null;
+                        if (wasRecording) {
+                            handleVoiceSocketDisconnect('Voice-Verbindung fehlgeschlagen');
+                        }
                         resolve(false);
                     };
 
@@ -1674,6 +1715,17 @@
 
                         if (data.type === 'status') {
                             showVoiceStatus(data.message, 'processing');
+                        } else if (data.type === 'vad_stop') {
+                            if (voiceStream.recording) {
+                                stopRealtimeVoice({ sendStop: false }).catch(err => {
+                                    console.warn('Realtime stop failed:', err);
+                                });
+                                voiceRecording.isRecording = false;
+                                voiceBtn.classList.remove('recording');
+                                voiceBtn.classList.add('processing');
+                                voiceBtn.textContent = '🎤';
+                                voiceBtn.setAttribute('aria-pressed', 'false');
+                            }
                         } else if (data.type === 'transcription') {
                             ensureVoiceUserMessage(data.text || '');
                         } else if (data.type === 'assistant_chunk') {
@@ -1763,11 +1815,9 @@
             voiceStream.processor.connect(voiceStream.silenceGain);
             voiceStream.silenceGain.connect(voiceStream.audioContext.destination);
 
-            const userId = window.userManager ? userManager.getUserId() : null;
             voiceStream.ws.send(JSON.stringify({
                 type: 'start',
                 sample_rate: voiceStream.sampleRate,
-                user_id: userId,
                 vad_enabled: true
             }));
 
@@ -1775,11 +1825,12 @@
             return true;
         }
 
-        async function stopRealtimeVoice() {
+        async function stopRealtimeVoice(options = {}) {
+            const sendStop = options.sendStop !== false;
             if (!voiceStream.recording) return;
             voiceStream.recording = false;
 
-            if (voiceStream.ws && voiceStream.connected) {
+            if (sendStop && voiceStream.ws && voiceStream.connected) {
                 voiceStream.ws.send(JSON.stringify({ type: 'stop' }));
             }
 
@@ -1808,38 +1859,50 @@
         }
 
         // Initialize Voice Functionality
-        async function initVoiceRecording() {
-            try {
-                // Test microphone access (doesn't start recording, just tests permission)
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                stream.getTracks().forEach(track => track.stop());
-                console.log('✅ Microphone access granted');
+        function initVoiceRecording() {
+            // Voice button click handler
+            voiceBtn.addEventListener('click', toggleVoiceRecording);
 
-                // Voice button click handler
-                voiceBtn.addEventListener('click', toggleVoiceRecording);
-
-                // Keyboard shortcut: Hold Space to record (nur wenn nicht im Input-Feld)
-                document.addEventListener('keydown', (e) => {
-                    if (e.code === 'Space' && !e.repeat && document.activeElement !== messageInput) {
-                        e.preventDefault();
-                        if (!voiceRecording.isRecording) {
-                            startVoiceRecording();
-                        }
+            // Keyboard shortcut: Hold Space to record (nur wenn nicht im Input-Feld)
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'Space' && !e.repeat && document.activeElement !== messageInput) {
+                    e.preventDefault();
+                    if (!voiceRecording.isRecording) {
+                        startVoiceRecording();
                     }
-                });
+                }
+            });
 
-                document.addEventListener('keyup', (e) => {
-                    if (e.code === 'Space' && voiceRecording.isRecording && document.activeElement !== messageInput) {
-                        e.preventDefault();
-                        stopVoiceRecording();
-                    }
-                });
+            document.addEventListener('keyup', (e) => {
+                if (e.code === 'Space' && voiceRecording.isRecording && document.activeElement !== messageInput) {
+                    e.preventDefault();
+                    stopVoiceRecording();
+                }
+            });
 
-            } catch (error) {
-                console.error('❌ Microphone access denied:', error);
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 voiceBtn.disabled = true;
-                voiceBtn.title = 'Mikrofon-Zugriff verweigert';
+                voiceBtn.title = 'Browser unterstützt keine Audio-Aufnahme';
+                console.warn('❌ Browser unterstützt keine Audio-Aufnahme');
+            } else if (typeof window.isSecureContext === 'boolean' && !window.isSecureContext) {
+                voiceBtn.title = 'Voice benötigt HTTPS oder localhost';
             }
+        }
+
+        function ensureVoicePrereqs() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showVoiceStatus('❌ Browser unterstützt keine Audio-Aufnahme', 'error');
+                setTimeout(() => hideVoiceStatus(), 3000);
+                return false;
+            }
+
+            if (typeof window.isSecureContext === 'boolean' && !window.isSecureContext) {
+                showVoiceStatus('🔒 Voice benötigt HTTPS oder localhost', 'error');
+                setTimeout(() => hideVoiceStatus(), 3000);
+                return false;
+            }
+
+            return true;
         }
 
         // Toggle Recording (Click-Handler)
@@ -1853,6 +1916,10 @@
 
         // Start Voice Recording
         async function startVoiceRecording() {
+            if (!ensureVoicePrereqs()) {
+                return;
+            }
+
             if (REALTIME_VOICE_ENABLED) {
                 try {
                     const started = await startRealtimeVoice();
@@ -1881,6 +1948,11 @@
         async function startLegacyVoiceRecording() {
             try {
                 stopAllAudioPlayback();
+                if (typeof MediaRecorder === 'undefined') {
+                    showVoiceStatus('❌ Browser unterstützt keine Audio-Aufnahme', 'error');
+                    resetVoiceUI();
+                    return;
+                }
                 const stream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         channelCount: 1,
@@ -1891,9 +1963,15 @@
                 });
 
                 voiceRecording.audioChunks = [];
-                voiceRecording.mediaRecorder = new MediaRecorder(stream, {
-                    mimeType: 'audio/webm;codecs=opus'
-                });
+                const mimeType = getSupportedRecorderMimeType();
+                voiceRecording.mimeType = mimeType;
+                try {
+                    const recorderOptions = mimeType ? { mimeType } : {};
+                    voiceRecording.mediaRecorder = new MediaRecorder(stream, recorderOptions);
+                } catch (error) {
+                    voiceRecording.mimeType = null;
+                    voiceRecording.mediaRecorder = new MediaRecorder(stream);
+                }
 
                 voiceRecording.mediaRecorder.ondataavailable = (event) => {
                     if (event.data.size > 0) {
@@ -1902,7 +1980,8 @@
                 };
 
                 voiceRecording.mediaRecorder.onstop = async () => {
-                    const audioBlob = new Blob(voiceRecording.audioChunks, { type: 'audio/webm' });
+                    const blobType = voiceRecording.mimeType || voiceRecording.mediaRecorder.mimeType || 'audio/webm';
+                    const audioBlob = new Blob(voiceRecording.audioChunks, { type: blobType });
                     await processVoiceMessage(audioBlob);
                     stream.getTracks().forEach(track => track.stop());
                 };
@@ -1976,7 +2055,12 @@
                 console.log(`📤 Uploading audio: ${(audioBlob.size / 1024).toFixed(2)} KB`);
 
                 const formData = new FormData();
-                formData.append('file', audioBlob, 'recording.webm');
+                const fileName = audioBlob.type === 'audio/mp4'
+                    ? 'recording.m4a'
+                    : audioBlob.type === 'audio/aac'
+                        ? 'recording.aac'
+                        : 'recording.webm';
+                formData.append('file', audioBlob, fileName);
 
                 // Get headers with user_id
                 const headers = window.userManager ? window.userManager.injectUserIdHeader() : {};
@@ -2070,6 +2154,7 @@
             sendBtn.disabled = false;
             messageInput.disabled = false;
             messageInput.focus();
+            voiceRecording.mimeType = null;
         }
 
         // Voice Status Indicator (dezentes Popup)
@@ -2092,14 +2177,7 @@
 
         // Initialize Voice Recording on page load
         window.addEventListener('load', () => {
-            // Check browser compatibility
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                voiceBtn.disabled = true;
-                voiceBtn.title = 'Browser unterstützt keine Audio-Aufnahme';
-                console.warn('❌ Browser unterstützt keine Audio-Aufnahme');
-            } else {
-                initVoiceRecording();
-            }
+            initVoiceRecording();
         });
 
         // Prevent sending message while recording

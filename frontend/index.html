@@ -331,10 +331,6 @@
                     <span>💬</span>
                     <span>Chat starten</span>
                 </a>
-                <a href="/frontend/chat_ui.html#voice-controls" class="hero-btn hero-btn-secondary">
-                    <span>🎤</span>
-                    <span>Voicechat</span>
-                </a>
                 <a href="/docs" class="hero-btn hero-btn-secondary">
                     <span>📚</span>
                     <span>API Docs</span>
@@ -513,37 +509,65 @@
     </footer>
 
     <script>
+        function getStatusUserId() {
+            if (window.userManager && userManager.getUserId()) {
+                return userManager.getUserId();
+            }
+            return localStorage.getItem('lexi_user_id');
+        }
+
+        function getStatusFetcher() {
+            if (window.userManager) {
+                return (url, options = {}) => userManager.authenticatedFetch(url, options);
+            }
+            return fetch;
+        }
+
         // Load system status
         async function loadStatus() {
+            const fetcher = getStatusFetcher();
+            const userId = getStatusUserId();
             try {
                 // Load memory stats
-                const memoryResponse = await fetch('/v1/memory/stats');
+                const memoryResponse = await fetcher('/v1/memory/stats');
+                if (!memoryResponse.ok) {
+                    throw new Error(`Memory stats failed: ${memoryResponse.status}`);
+                }
                 const memoryData = await memoryResponse.json();
                 document.getElementById('memoryCount').textContent = memoryData.total || 0;
 
                 // Load goals stats
-                const goalsResponse = await fetch('/v1/goals/stats/summary');
-                const goalsData = await goalsResponse.json();
-                if (goalsData.success) {
-                    document.getElementById('activeGoals').textContent = goalsData.stats.active || 0;
+                const goalsUrl = userId
+                    ? `/v1/goals/stats/summary?user_id=${encodeURIComponent(userId)}`
+                    : '/v1/goals/stats/summary';
+                const goalsResponse = await fetcher(goalsUrl);
+                if (!goalsResponse.ok) {
+                    throw new Error(`Goals stats failed: ${goalsResponse.status}`);
                 }
+                const goalsData = await goalsResponse.json();
+                document.getElementById('activeGoals').textContent = (goalsData.stats && goalsData.stats.active) || 0;
 
                 // Load patterns stats
-                const patternsResponse = await fetch('/v1/patterns/stats/summary');
-                const patternsData = await patternsResponse.json();
-                if (patternsData.success) {
-                    document.getElementById('patternsDetected').textContent = patternsData.stats.total || 0;
+                const patternsUrl = userId
+                    ? `/v1/patterns/stats/summary?user_id=${encodeURIComponent(userId)}`
+                    : '/v1/patterns/stats/summary';
+                const patternsResponse = await fetcher(patternsUrl);
+                if (!patternsResponse.ok) {
+                    throw new Error(`Patterns stats failed: ${patternsResponse.status}`);
                 }
+                const patternsData = await patternsResponse.json();
+                document.getElementById('patternsDetected').textContent =
+                    patternsData.total_patterns || (patternsData.stats && patternsData.stats.total) || 0;
 
                 // System uptime (placeholder)
                 document.getElementById('systemUptime').textContent = 'Online';
 
             } catch (error) {
                 console.error('Error loading status:', error);
-                document.getElementById('memoryCount').textContent = '?';
-                document.getElementById('activeGoals').textContent = '?';
-                document.getElementById('patternsDetected').textContent = '?';
-                document.getElementById('systemUptime').textContent = '?';
+                document.getElementById('memoryCount').textContent = '—';
+                document.getElementById('activeGoals').textContent = '—';
+                document.getElementById('patternsDetected').textContent = '—';
+                document.getElementById('systemUptime').textContent = '—';
             }
         }
 
@@ -580,6 +604,7 @@
         // Initialize user and handle auth state
         userManager.init().then(() => {
             console.log('✅ User initialized:', userManager.getUserId());
+            loadStatus();
         }).catch(error => {
             console.error('❌ UserManager initialization failed:', error);
         }).finally(() => {

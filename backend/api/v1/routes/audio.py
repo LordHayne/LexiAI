@@ -16,7 +16,10 @@ import base64
 import math
 import struct
 import wave
+import jwt
 from backend.services.tts_simple import synthesize_speech_simple
+from backend.config.auth_config import SecurityConfig
+from backend.services.user_store import get_user_store, generate_anonymous_user
 
 logger = logging.getLogger("lexi_audio_api")
 router = APIRouter()
@@ -42,6 +45,49 @@ class AudioStats:
         self.successful_requests += 1
 
 audio_stats = AudioStats()
+
+# ---------------------------------------------------
+# 0️⃣ User resolution helpers (WebSocket)
+def _resolve_ws_user_id(websocket: WebSocket) -> Optional[str]:
+    if SecurityConfig.JWT_ENABLED:
+        token = websocket.cookies.get("access_token")
+        if token:
+            try:
+                payload = jwt.decode(
+                    token,
+                    SecurityConfig.JWT_SECRET,
+                    algorithms=[SecurityConfig.JWT_ALGORITHM]
+                )
+                user_id = payload.get("sub")
+                if user_id:
+                    return user_id
+            except jwt.PyJWTError:
+                pass
+
+    cookie_user_id = websocket.cookies.get("lexi_user_id")
+    if cookie_user_id:
+        return cookie_user_id
+
+    query_user_id = websocket.query_params.get("user_id")
+    if query_user_id:
+        return query_user_id
+
+    return None
+
+
+def _ensure_ws_user_id(websocket: WebSocket) -> str:
+    user_id = _resolve_ws_user_id(websocket)
+    if user_id:
+        return user_id
+
+    user_store = get_user_store()
+    new_user = generate_anonymous_user()
+    try:
+        user_store.create_user(new_user)
+        user_store.update_last_seen(new_user.user_id)
+    except Exception as e:
+        logger.warning(f"Failed to create anonymous WS user: {e}")
+    return new_user.user_id
 
 # ---------------------------------------------------
 # 1️⃣ Konfigurationswert aus persistent_config.json laden
@@ -624,8 +670,10 @@ async def voice_ws(websocket: WebSocket):
     vad_threshold = 600
     vad_silence_ms = 700
     last_voice_ms: Optional[float] = None
-    user_id: Optional[str] = None
+    user_id: Optional[str] = _ensure_ws_user_id(websocket)
     processing = False
+    max_audio_seconds = int(get_persistent_config_value("voice_max_seconds", 60))
+    max_buffer_bytes = sample_rate * 2 * max_audio_seconds
 
     async def finalize_utterance():
         nonlocal buffer, is_recording, processing
@@ -699,12 +747,22 @@ async def voice_ws(websocket: WebSocket):
             if msg_type == "start":
                 buffer = bytearray()
                 is_recording = True
-                sample_rate = int(payload.get("sample_rate", 16000))
-                user_id = payload.get("user_id")
+                try:
+                    requested_rate = int(payload.get("sample_rate", 16000))
+                except (TypeError, ValueError):
+                    requested_rate = 16000
+                sample_rate = max(8000, min(48000, requested_rate))
                 vad_enabled = payload.get("vad_enabled", True)
-                vad_threshold = int(payload.get("vad_threshold", 600))
-                vad_silence_ms = int(payload.get("vad_silence_ms", 700))
+                try:
+                    vad_threshold = int(payload.get("vad_threshold", 600))
+                except (TypeError, ValueError):
+                    vad_threshold = 600
+                try:
+                    vad_silence_ms = int(payload.get("vad_silence_ms", 700))
+                except (TypeError, ValueError):
+                    vad_silence_ms = 700
                 last_voice_ms = None
+                max_buffer_bytes = sample_rate * 2 * max_audio_seconds
                 await websocket.send_json({"type": "status", "message": "Aufnahme gestartet."})
 
             elif msg_type == "audio":
@@ -719,12 +777,19 @@ async def voice_ws(websocket: WebSocket):
                     continue
                 buffer.extend(chunk)
 
+                if len(buffer) >= max_buffer_bytes:
+                    await websocket.send_json({"type": "vad_stop"})
+                    await websocket.send_json({"type": "status", "message": "Maximale Länge erreicht, verarbeite..."})
+                    await finalize_utterance()
+                    continue
+
                 if vad_enabled:
                     rms = _pcm16_rms(chunk)
                     now_ms = time.time() * 1000
                     if rms >= vad_threshold:
                         last_voice_ms = now_ms
                     elif last_voice_ms is not None and (now_ms - last_voice_ms) >= vad_silence_ms:
+                        await websocket.send_json({"type": "vad_stop"})
                         await websocket.send_json({"type": "status", "message": "Stille erkannt, verarbeite..."})
                         await finalize_utterance()
 

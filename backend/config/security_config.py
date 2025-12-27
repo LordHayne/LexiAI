@@ -226,7 +226,7 @@ class SecurityConfig:
         # Permissions Policy (formerly Feature-Policy)
         "Permissions-Policy": (
             "geolocation=(), "
-            "microphone=self, "
+            "microphone=(self), "
             "camera=(), "
             "payment=(), "
             "usb=()"
