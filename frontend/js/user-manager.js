@@ -333,7 +333,7 @@ class UserManager {
         // Add user ID header
         if (this.userId) {
             result['X-User-ID'] = this.userId;
-        } else {
+        } else if (this.isInitialized) {
             console.warn('⚠️ No user_id available for header injection');
         }
 
