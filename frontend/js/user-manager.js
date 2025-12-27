@@ -42,6 +42,12 @@ class UserManager {
         }
 
         try {
+            const authResolved = await this.hydrateFromAuthSession();
+            if (authResolved) {
+                this.isInitialized = true;
+                return;
+            }
+
             // 1. Check LocalStorage for existing user_id
             this.userId = localStorage.getItem(this.STORAGE_KEY_USER_ID);
             this.displayName = localStorage.getItem(this.STORAGE_KEY_DISPLAY_NAME);
@@ -84,6 +90,45 @@ class UserManager {
                 console.error('❌ Retry failed:', retryError);
                 throw new Error('User initialization failed after retry');
             }
+        }
+    }
+
+    /**
+     * Attempt to recover authenticated user from cookies.
+     */
+    async hydrateFromAuthSession() {
+        if (!this.authManager) {
+            return false;
+        }
+
+        try {
+            const response = await this.authManager.authenticatedFetch('/v1/auth/me');
+            if (!response.ok) {
+                return false;
+            }
+
+            const authUser = await response.json();
+            if (!authUser || !authUser.user_id) {
+                return false;
+            }
+
+            if (typeof this.authManager.storeAuthData === 'function') {
+                this.authManager.storeAuthData(authUser);
+            }
+
+            this.setAuthenticatedUser(authUser);
+
+            try {
+                const profileUser = await this.fetchUserProfile();
+                this.syncAuthUserData(profileUser);
+            } catch (error) {
+                console.warn('⚠️ Failed to sync authenticated user profile:', error);
+            }
+
+            return true;
+        } catch (error) {
+            console.warn('⚠️ Failed to hydrate auth session:', error);
+            return false;
         }
     }
 

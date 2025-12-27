@@ -18,6 +18,7 @@ CHAT_HISTORY_VECTOR_SIZE = 1
 CHAT_HISTORY_VECTOR = [1.0]
 
 _collection_ready = False
+_collection_ready_for: Optional[str] = None
 _collection_lock = threading.Lock()
 
 
@@ -42,17 +43,25 @@ def _get_collection_name() -> str:
     return MiddlewareConfig.get_chat_history_collection()
 
 
-def _ensure_collection_exists() -> None:
-    global _collection_ready
-    if _collection_ready:
+def _is_not_found_error(exc: Exception) -> bool:
+    status_code = getattr(exc, "status_code", None)
+    if status_code == 404:
+        return True
+    message = str(exc).lower()
+    return "not found" in message and "collection" in message
+
+
+def _ensure_collection_exists(force: bool = False) -> None:
+    global _collection_ready, _collection_ready_for
+    name = _get_collection_name()
+    if not force and _collection_ready and _collection_ready_for == name:
         return
 
     with _collection_lock:
-        if _collection_ready:
+        if not force and _collection_ready and _collection_ready_for == name:
             return
 
         client = get_qdrant_client()
-        name = _get_collection_name()
 
         try:
             info = client.get_collection(name)
@@ -64,7 +73,9 @@ def _ensure_collection_exists() -> None:
                     existing_dim,
                     CHAT_HISTORY_VECTOR_SIZE,
                 )
-        except UnexpectedResponse:
+        except UnexpectedResponse as exc:
+            if not _is_not_found_error(exc):
+                raise
             logger.info("Creating chat history collection '%s'", name)
             client.create_collection(
                 collection_name=name,
@@ -100,6 +111,7 @@ def _ensure_collection_exists() -> None:
                 logger.warning("Failed creating payload indices for '%s': %s", name, e)
 
         _collection_ready = True
+        _collection_ready_for = name
 
 
 def store_chat_message(
@@ -136,7 +148,14 @@ def store_chat_message(
         vector=CHAT_HISTORY_VECTOR,
         payload={k: v for k, v in payload.items() if v is not None},
     )
-    safe_upsert(collection_name=_get_collection_name(), points=[point])
+    try:
+        safe_upsert(collection_name=_get_collection_name(), points=[point])
+    except UnexpectedResponse as exc:
+        if _is_not_found_error(exc):
+            _ensure_collection_exists(force=True)
+            safe_upsert(collection_name=_get_collection_name(), points=[point])
+        else:
+            raise
 
 
 def store_chat_turn(
@@ -174,14 +193,28 @@ def _scroll_points(scroll_filter: Filter, limit: int = 1000) -> List:
     offset = None
 
     while True:
-        result = safe_scroll(
-            collection_name=_get_collection_name(),
-            scroll_filter=scroll_filter,
-            with_payload=True,
-            with_vectors=False,
-            limit=limit,
-            offset=offset,
-        )
+        try:
+            result = safe_scroll(
+                collection_name=_get_collection_name(),
+                scroll_filter=scroll_filter,
+                with_payload=True,
+                with_vectors=False,
+                limit=limit,
+                offset=offset,
+            )
+        except UnexpectedResponse as exc:
+            if _is_not_found_error(exc):
+                _ensure_collection_exists(force=True)
+                result = safe_scroll(
+                    collection_name=_get_collection_name(),
+                    scroll_filter=scroll_filter,
+                    with_payload=True,
+                    with_vectors=False,
+                    limit=limit,
+                    offset=offset,
+                )
+            else:
+                raise
 
         batch = getattr(result, "points", None)
         next_offset = getattr(result, "next_page_offset", None)

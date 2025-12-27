@@ -271,6 +271,16 @@ async def register(request: RegisterRequest, http_request: Request, response: Re
             path="/"        # Available for all routes
         )
 
+        # Align middleware identity with authenticated user
+        response.set_cookie(
+            key="lexi_user_id",
+            value=user["user_id"],
+            httponly=False,
+            samesite="lax",
+            max_age=365 * 24 * 60 * 60,
+            path="/"
+        )
+
         # User-Objekt für Frontend vorbereiten (ohne password_hash und OHNE TOKENS)
         user_data = {
             "user_id": user["user_id"],
@@ -399,6 +409,16 @@ async def login(request: LoginRequest, http_request: Request, response: Response
             samesite="lax", # CSRF protection
             max_age=refresh_days * 86400, # days in seconds
             path="/"        # Available for all routes
+        )
+
+        # Align middleware identity with authenticated user
+        response.set_cookie(
+            key="lexi_user_id",
+            value=user["user_id"],
+            httponly=False,
+            samesite="lax",
+            max_age=365 * 24 * 60 * 60,
+            path="/"
         )
 
         # User-Objekt für Frontend vorbereiten (ohne password_hash und OHNE TOKENS)
