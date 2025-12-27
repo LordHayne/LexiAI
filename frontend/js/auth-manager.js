@@ -329,7 +329,6 @@ class AuthManager {
      * Kept for backwards compatibility
      */
     getAuthHeader() {
-        console.warn('getAuthHeader() is deprecated. Authentication uses HttpOnly cookies sent automatically.');
         return {};
     }
 

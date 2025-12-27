@@ -523,6 +523,15 @@
             return fetch;
         }
 
+        async function safeJson(response) {
+            try {
+                const data = await response.json();
+                return data && typeof data === 'object' ? data : {};
+            } catch (error) {
+                return {};
+            }
+        }
+
         // Load system status
         async function loadStatus() {
             const fetcher = getStatusFetcher();
@@ -533,8 +542,8 @@
                 if (!memoryResponse.ok) {
                     throw new Error(`Memory stats failed: ${memoryResponse.status}`);
                 }
-                const memoryData = await memoryResponse.json();
-                document.getElementById('memoryCount').textContent = memoryData.total || 0;
+                const memoryData = await safeJson(memoryResponse);
+                document.getElementById('memoryCount').textContent = memoryData.total ?? 0;
 
                 // Load goals stats
                 const goalsUrl = userId
@@ -544,8 +553,9 @@
                 if (!goalsResponse.ok) {
                     throw new Error(`Goals stats failed: ${goalsResponse.status}`);
                 }
-                const goalsData = await goalsResponse.json();
-                document.getElementById('activeGoals').textContent = (goalsData.stats && goalsData.stats.active) || 0;
+                const goalsData = await safeJson(goalsResponse);
+                const activeGoals = (goalsData.stats && goalsData.stats.active) ?? goalsData.active ?? 0;
+                document.getElementById('activeGoals').textContent = activeGoals;
 
                 // Load patterns stats
                 const patternsUrl = userId
@@ -555,9 +565,9 @@
                 if (!patternsResponse.ok) {
                     throw new Error(`Patterns stats failed: ${patternsResponse.status}`);
                 }
-                const patternsData = await patternsResponse.json();
+                const patternsData = await safeJson(patternsResponse);
                 document.getElementById('patternsDetected').textContent =
-                    patternsData.total_patterns || (patternsData.stats && patternsData.stats.total) || 0;
+                    patternsData.total_patterns ?? (patternsData.stats && patternsData.stats.total) ?? 0;
 
                 // System uptime (placeholder)
                 document.getElementById('systemUptime').textContent = 'Online';

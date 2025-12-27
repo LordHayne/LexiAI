@@ -337,12 +337,6 @@ class UserManager {
             console.warn('⚠️ No user_id available for header injection');
         }
 
-        // Add JWT authorization if available
-        if (this.authManager) {
-            const authHeaders = this.authManager.getAuthHeader();
-            Object.assign(result, authHeaders);
-        }
-
         return result;
     }
 
