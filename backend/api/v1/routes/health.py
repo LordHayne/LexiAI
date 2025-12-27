@@ -63,8 +63,10 @@ async def health_check():
     if components_status.get("database") and components_status["database"].status == "ok":
         try:
             from backend.memory.adapter import get_memory_stats
+            stats = get_memory_stats()
             memory_stats = {
-                "categories": get_memory_stats(),
+                "total": stats.get("total", 0),
+                "categories": stats.get("categories", {}),
                 "last_access": datetime.datetime.now().isoformat()
             }
         except Exception:

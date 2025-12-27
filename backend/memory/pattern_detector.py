@@ -11,6 +11,7 @@ Features:
 """
 
 import logging
+import os
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, Any, Tuple
@@ -20,6 +21,8 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 
 from backend.models.memory_entry import MemoryEntry
+from backend.qdrant.client_wrapper import safe_upsert
+from backend.qdrant.collection_helpers import ensure_collection
 
 logger = logging.getLogger("lexi_middleware.pattern_detector")
 
@@ -56,7 +59,8 @@ class Pattern:
             "related_memory_ids": self.related_memory_ids,
             "keywords": self.keywords,
             "trend": self.trend,
-            "metadata": self.metadata
+            "metadata": self.metadata,
+            "timestamp_ms": int(self.last_seen.timestamp() * 1000)
         }
 
     @classmethod
@@ -331,18 +335,9 @@ class PatternTracker:
     def _ensure_collection(self):
         """Stellt sicher dass Patterns Collection existiert"""
         try:
-            from backend.qdrant.client_wrapper import QdrantClient
-            from backend.qdrant.client_wrapper import safe_upsert
             client = self.vectorstore.client
-
-            collections = client.get_collections().collections
-            if not any(c.name == self.patterns_collection for c in collections):
-                from qdrant_client.models import Distance, VectorParams
-
-                client.create_collection(
-                    collection_name=self.patterns_collection,
-                    vectors_config=VectorParams(size=1, distance=Distance.COSINE)
-                )
+            created = ensure_collection(client, self.patterns_collection)
+            if created:
                 logger.info(f"✅ Created patterns collection: {self.patterns_collection}")
         except Exception as e:
             logger.error(f"Error ensuring patterns collection: {e}")
@@ -375,18 +370,38 @@ class PatternTracker:
     def get_all_patterns(self, user_id: str, pattern_type: Optional[str] = None) -> List[Pattern]:
         """Holt alle Patterns eines Users"""
         try:
-            from qdrant_client.models import Filter, FieldCondition, MatchValue
+            from qdrant_client.models import Filter, FieldCondition, MatchValue, Range
 
             client = self.vectorstore.client
 
-            filter_conditions = [
+            base_conditions = [
                 FieldCondition(key="user_id", match=MatchValue(value=user_id))
             ]
 
             if pattern_type:
-                filter_conditions.append(
+                base_conditions.append(
                     FieldCondition(key="pattern_type", match=MatchValue(value=pattern_type))
                 )
+
+            try:
+                cutoff_days = os.environ.get("LEXI_PATTERN_DAYS")
+                if cutoff_days is None:
+                    cutoff_days = os.environ.get("LEXI_STATS_DAYS", "180")
+                cutoff_days = int(cutoff_days)
+            except (TypeError, ValueError):
+                cutoff_days = 180
+
+            cutoff_ms = None
+            if cutoff_days > 0:
+                cutoff_dt = datetime.now(timezone.utc) - timedelta(days=cutoff_days)
+                cutoff_ms = int(cutoff_dt.timestamp() * 1000)
+
+            if cutoff_ms:
+                filter_conditions = base_conditions + [
+                    FieldCondition(key="timestamp_ms", range=Range(gte=cutoff_ms))
+                ]
+            else:
+                filter_conditions = base_conditions
 
             scroll_result = client.scroll(
                 collection_name=self.patterns_collection,
@@ -397,6 +412,15 @@ class PatternTracker:
             )
 
             points = scroll_result[0] if isinstance(scroll_result, tuple) else scroll_result.points
+            if not points and cutoff_ms:
+                scroll_result = client.scroll(
+                    collection_name=self.patterns_collection,
+                    scroll_filter=Filter(must=base_conditions),
+                    with_payload=True,
+                    with_vectors=False,
+                    limit=1000
+                )
+                points = scroll_result[0] if isinstance(scroll_result, tuple) else scroll_result.points
 
             patterns = []
             for point in points:

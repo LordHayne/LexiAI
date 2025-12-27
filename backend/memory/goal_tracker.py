@@ -11,11 +11,15 @@ Features:
 """
 
 import logging
+import os
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
+
+from backend.qdrant.client_wrapper import safe_upsert
+from backend.qdrant.collection_helpers import ensure_collection
 
 logger = logging.getLogger("lexi_middleware.goal_tracker")
 
@@ -57,6 +61,7 @@ class Goal:
 
     def to_dict(self) -> Dict[str, Any]:
         """Konvertiert zu Dictionary für Speicherung"""
+        timestamp_source = self.last_mentioned or self.updated_at or self.created_at
         return {
             "id": self.id,
             "user_id": self.user_id,
@@ -72,7 +77,8 @@ class Goal:
             "mentions": self.mentions,
             "last_mentioned": self.last_mentioned.isoformat() if self.last_mentioned else None,
             "source_memory_ids": self.source_memory_ids,
-            "metadata": self.metadata
+            "metadata": self.metadata,
+            "timestamp_ms": int(timestamp_source.timestamp() * 1000)
         }
 
     @classmethod
@@ -253,20 +259,10 @@ class GoalTracker:
     def _ensure_collection(self):
         """Stellt sicher dass Goals Collection existiert"""
         try:
-            from backend.qdrant.client_wrapper import QdrantClient
-            from backend.qdrant.client_wrapper import safe_upsert
             client = self.vectorstore.client
 
-            # Prüfe ob Collection existiert
-            collections = client.get_collections().collections
-            if not any(c.name == self.goals_collection for c in collections):
-                # Erstelle Collection (Goals brauchen keine Embeddings, nur Metadaten)
-                from qdrant_client.models import Distance, VectorParams
-
-                client.create_collection(
-                    collection_name=self.goals_collection,
-                    vectors_config=VectorParams(size=1, distance=Distance.COSINE)  # Dummy vector
-                )
+            created = ensure_collection(client, self.goals_collection)
+            if created:
                 logger.info(f"✅ Created goals collection: {self.goals_collection}")
         except Exception as e:
             logger.error(f"Error ensuring goals collection: {e}")
@@ -299,20 +295,40 @@ class GoalTracker:
     def get_all_goals(self, user_id: str, status: Optional[GoalStatus] = None) -> List[Goal]:
         """Holt alle Ziele eines Benutzers"""
         try:
-            from qdrant_client.models import Filter, FieldCondition, MatchValue
+            from qdrant_client.models import Filter, FieldCondition, MatchValue, Range
 
             client = self.vectorstore.client
 
             # Filter für user_id
-            filter_conditions = [
+            base_conditions = [
                 FieldCondition(key="user_id", match=MatchValue(value=user_id))
             ]
 
             # Optional: Filter für Status
             if status:
-                filter_conditions.append(
+                base_conditions.append(
                     FieldCondition(key="status", match=MatchValue(value=status.value))
                 )
+
+            try:
+                cutoff_days = os.environ.get("LEXI_GOAL_DAYS")
+                if cutoff_days is None:
+                    cutoff_days = os.environ.get("LEXI_STATS_DAYS", "180")
+                cutoff_days = int(cutoff_days)
+            except (TypeError, ValueError):
+                cutoff_days = 180
+
+            cutoff_ms = None
+            if cutoff_days > 0:
+                cutoff_dt = datetime.now(timezone.utc) - timedelta(days=cutoff_days)
+                cutoff_ms = int(cutoff_dt.timestamp() * 1000)
+
+            if cutoff_ms:
+                filter_conditions = base_conditions + [
+                    FieldCondition(key="timestamp_ms", range=Range(gte=cutoff_ms))
+                ]
+            else:
+                filter_conditions = base_conditions
 
             scroll_result = client.scroll(
                 collection_name=self.goals_collection,
@@ -324,6 +340,15 @@ class GoalTracker:
 
             # Handle tuple return
             points = scroll_result[0] if isinstance(scroll_result, tuple) else scroll_result.points
+            if not points and cutoff_ms:
+                scroll_result = client.scroll(
+                    collection_name=self.goals_collection,
+                    scroll_filter=Filter(must=base_conditions),
+                    with_payload=True,
+                    with_vectors=False,
+                    limit=1000
+                )
+                points = scroll_result[0] if isinstance(scroll_result, tuple) else scroll_result.points
 
             goals = []
             for point in points:

@@ -2,7 +2,6 @@ import time
 import logging
 from typing import Dict, TYPE_CHECKING
 import requests
-from qdrant_client import QdrantClient
 
 # LAZY IMPORT: langchain_ollama blockiert wenn Ollama nicht läuft
 # Runtime imports werden in den Funktionen gemacht wenn benötigt
@@ -11,6 +10,7 @@ if TYPE_CHECKING:
 
 from backend.config.middleware_config import MiddlewareConfig
 from backend.api.v1.models.response_models import ComponentStatus
+from backend.qdrant.client_wrapper import get_qdrant_client
 
 logger = logging.getLogger("lexi_middleware.core_adapter")
 
@@ -74,11 +74,7 @@ def check_lexi_components_health() -> Dict[str, ComponentStatus]:
     # Check Qdrant database and dimension consistency
     try:
         start_time = time.time()
-        host = MiddlewareConfig.get_qdrant_host()
-        if host.startswith(("http://", "https://")):
-            host = host.split("://")[1]
-
-        client = QdrantClient(host=host, port=MiddlewareConfig.get_qdrant_port())
+        client = get_qdrant_client()
         collections = client.get_collections().collections
         collection_names = [collection.name for collection in collections]
         latency = int((time.time() - start_time) * 1000)

@@ -13,11 +13,15 @@ Features:
 """
 
 import logging
+import os
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, field
 from collections import defaultdict
+
+from backend.qdrant.client_wrapper import safe_upsert
+from backend.qdrant.collection_helpers import ensure_collection
 
 logger = logging.getLogger("lexi_middleware.knowledge_gap_detector")
 
@@ -56,7 +60,8 @@ class KnowledgeGap:
             "related_memory_ids": self.related_memory_ids,
             "created_at": self.created_at.isoformat(),
             "dismissed": self.dismissed,
-            "metadata": self.metadata
+            "metadata": self.metadata,
+            "timestamp_ms": int(self.created_at.timestamp() * 1000)
         }
 
     @classmethod
@@ -373,18 +378,9 @@ class KnowledgeGapTracker:
     def _ensure_collection(self):
         """Stellt sicher dass Knowledge Gaps Collection existiert"""
         try:
-            from backend.qdrant.client_wrapper import QdrantClient
-            from backend.qdrant.client_wrapper import safe_upsert
             client = self.vectorstore.client
-
-            collections = client.get_collections().collections
-            if not any(c.name == self.gaps_collection for c in collections):
-                from qdrant_client.models import Distance, VectorParams
-
-                client.create_collection(
-                    collection_name=self.gaps_collection,
-                    vectors_config=VectorParams(size=1, distance=Distance.COSINE)
-                )
+            created = ensure_collection(client, self.gaps_collection)
+            if created:
                 logger.info(f"✅ Created knowledge gaps collection: {self.gaps_collection}")
         except Exception as e:
             logger.error(f"Error ensuring gaps collection: {e}")
@@ -417,18 +413,38 @@ class KnowledgeGapTracker:
     def get_all_gaps(self, user_id: str, include_dismissed: bool = False) -> List[KnowledgeGap]:
         """Holt alle Wissenslücken"""
         try:
-            from qdrant_client.models import Filter, FieldCondition, MatchValue
+            from qdrant_client.models import Filter, FieldCondition, MatchValue, Range
 
             client = self.vectorstore.client
 
-            filter_conditions = [
+            base_conditions = [
                 FieldCondition(key="user_id", match=MatchValue(value=user_id))
             ]
 
             if not include_dismissed:
-                filter_conditions.append(
+                base_conditions.append(
                     FieldCondition(key="dismissed", match=MatchValue(value=False))
                 )
+
+            try:
+                cutoff_days = os.environ.get("LEXI_GAP_DAYS")
+                if cutoff_days is None:
+                    cutoff_days = os.environ.get("LEXI_STATS_DAYS", "180")
+                cutoff_days = int(cutoff_days)
+            except (TypeError, ValueError):
+                cutoff_days = 180
+
+            cutoff_ms = None
+            if cutoff_days > 0:
+                cutoff_dt = datetime.now(timezone.utc) - timedelta(days=cutoff_days)
+                cutoff_ms = int(cutoff_dt.timestamp() * 1000)
+
+            if cutoff_ms:
+                filter_conditions = base_conditions + [
+                    FieldCondition(key="timestamp_ms", range=Range(gte=cutoff_ms))
+                ]
+            else:
+                filter_conditions = base_conditions
 
             scroll_result = client.scroll(
                 collection_name=self.gaps_collection,
@@ -439,6 +455,15 @@ class KnowledgeGapTracker:
             )
 
             points = scroll_result[0] if isinstance(scroll_result, tuple) else scroll_result.points
+            if not points and cutoff_ms:
+                scroll_result = client.scroll(
+                    collection_name=self.gaps_collection,
+                    scroll_filter=Filter(must=base_conditions),
+                    with_payload=True,
+                    with_vectors=False,
+                    limit=1000
+                )
+                points = scroll_result[0] if isinstance(scroll_result, tuple) else scroll_result.points
 
             gaps = []
             for point in points:

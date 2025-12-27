@@ -4,6 +4,7 @@ Automatische Extraktion von User-Profil-Informationen aus Konversationen
 """
 import logging
 import json
+import re
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from datetime import datetime, timezone
 
@@ -22,8 +23,10 @@ class ProfileBuilder:
 
     # Profile-Kategorien
     CATEGORIES = [
+        "user_profile_name",            # Name
         "user_profile_occupation",      # Beruf/Tätigkeit
         "user_profile_interests",        # Hobbys/Interessen
+        "user_profile_skills",           # Fähigkeiten/Skills
         "user_profile_preferences",      # Präferenzen (Kommunikationsstil, etc.)
         "user_profile_background",       # Hintergrund/Ausbildung
         "user_profile_goals",            # Ziele/Absichten
@@ -71,6 +74,8 @@ class ProfileBuilder:
             Aktualisiertes Profil-Dictionary oder leeres Dict bei Fehler
         """
         try:
+            rule_based_info = self._extract_rule_based_profile(user_message)
+
             # Prompt für LLM zur Profil-Extraktion
             extraction_prompt = self._build_extraction_prompt(
                 user_message,
@@ -84,11 +89,13 @@ class ProfileBuilder:
             # Response parsen
             extracted_info = self._parse_llm_response(response.content)
 
-            if extracted_info:
+            if extracted_info or rule_based_info:
                 # Profil aktualisieren (merge mit current_profile)
                 updated_profile = self._merge_profiles(current_profile, extracted_info)
+                updated_profile = self._merge_profiles(updated_profile, rule_based_info)
 
-                logger.info(f"Profil-Informationen extrahiert: {list(extracted_info.keys())}")
+                extracted_keys = set(extracted_info.keys()) | set(rule_based_info.keys())
+                logger.info(f"Profil-Informationen extrahiert: {sorted(extracted_keys)}")
                 return updated_profile
 
             return current_profile
@@ -131,6 +138,7 @@ WICHTIG:
 Beispiel Output:
 {{
   "user_profile_occupation": "Software-Entwickler",
+  "user_profile_skills": ["Python", "FastAPI"],
   "user_profile_interests": ["Künstliche Intelligenz", "Machine Learning"],
   "user_profile_technical_level": "Fortgeschritten"
 }}
@@ -177,6 +185,95 @@ Output (NUR JSON, keine Erklärung):"""
         except Exception as e:
             logger.error(f"Fehler beim Response-Parsing: {e}")
             return {}
+
+    def _split_list_values(self, raw_value: str) -> List[str]:
+        parts = re.split(r",|\bund\b|\band\b|&|\bsowie\b", raw_value)
+        cleaned = []
+        for part in parts:
+            value = part.strip()
+            if value:
+                cleaned.append(value)
+        return cleaned
+
+    def _extract_rule_based_profile(self, user_message: str) -> Dict[str, Any]:
+        text = (user_message or "").strip()
+        if not text:
+            return {}
+
+        extracted: Dict[str, Any] = {}
+        stop_starts = ("dir ", "dich ", "euch ", "ihnen ", "ihm ")
+        list_fields = {
+            "user_profile_interests",
+            "user_profile_skills",
+            "user_profile_languages",
+        }
+
+        patterns = [
+            ("user_profile_name", [
+                r"\bich hei[ßs]e\s+([^.,;!?]+)",
+                r"\bmein name ist\s+([^.,;!?]+)",
+                r"\bich\s+([a-zäöüß-]+)\s+hei[ßs]e\b",
+            ]),
+            ("user_profile_occupation", [
+                r"\bich arbeite als\s+([^.,;!?]+)",
+                r"\bmein beruf ist\s+([^.,;!?]+)",
+                r"\bich bin\s+([^.,;!?]+)\s+von beruf\b",
+            ]),
+            ("user_profile_interests", [
+                r"\bmein hobby ist\s+([^.,;!?]+)",
+                r"\bmeine hobbys sind\s+([^.,;!?]+)",
+                r"\bich interessiere mich für\s+([^.,;!?]+)",
+                r"\bich begeistere mich für\s+([^.,;!?]+)",
+            ]),
+            ("user_profile_skills", [
+                r"\bich kann\s+([^.,;!?]+)",
+                r"\bich beherrsche\s+([^.,;!?]+)",
+                r"\bich kenne mich mit\s+([^.,;!?]+)\s+aus\b",
+            ]),
+            ("user_profile_languages", [
+                r"\bich spreche\s+([^.,;!?]+)",
+                r"\bmeine sprachen sind\s+([^.,;!?]+)",
+            ]),
+            ("user_profile_location", [
+                r"\bich wohne in\s+([^.,;!?]+)",
+                r"\bich lebe in\s+([^.,;!?]+)",
+            ]),
+            ("user_profile_preferences", [
+                r"\bich bevorzuge\s+([^.,;!?]+)",
+                r"\bich mag es\s+([^.,;!?]+)",
+            ]),
+            ("user_profile_goals", [
+                r"\bmein ziel ist\s+([^.,;!?]+)",
+            ]),
+        ]
+
+        for field, field_patterns in patterns:
+            for pattern in field_patterns:
+                match = re.search(pattern, text, flags=re.IGNORECASE)
+                if not match:
+                    continue
+                raw_value = match.group(1).strip()
+                if raw_value.lower().startswith(stop_starts):
+                    continue
+                if not raw_value:
+                    continue
+                if field in list_fields:
+                    values = self._split_list_values(raw_value)
+                    if values:
+                        extracted.setdefault(field, []).extend(values)
+                else:
+                    extracted[field] = raw_value
+                break
+
+        for field in list_fields:
+            if field in extracted:
+                unique = []
+                for value in extracted[field]:
+                    if value not in unique:
+                        unique.append(value)
+                extracted[field] = unique
+
+        return extracted
 
     def _merge_profiles(
         self,
@@ -241,8 +338,10 @@ Output (NUR JSON, keine Erklärung):"""
         summary_parts = []
 
         category_names = {
+            "user_profile_name": "Name",
             "user_profile_occupation": "Beruf/Tätigkeit",
             "user_profile_interests": "Interessen",
+            "user_profile_skills": "Fähigkeiten",
             "user_profile_preferences": "Präferenzen",
             "user_profile_background": "Hintergrund",
             "user_profile_goals": "Ziele",
@@ -283,8 +382,10 @@ Output (NUR JSON, keine Erklärung):"""
         Returns:
             True wenn Update sinnvoll
         """
-        # Zu kurze Nachrichten überspringen
+        # Zu kurze Nachrichten überspringen, außer klare Profilsignale
         if len(user_message) < min_message_length:
+            if self._extract_rule_based_profile(user_message):
+                return True
             return False
 
         # System-Commands überspringen

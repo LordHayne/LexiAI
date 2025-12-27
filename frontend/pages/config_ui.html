@@ -2146,6 +2146,51 @@
     <script src="/frontend/js/user-manager.js"></script>
     <script defer src="/frontend/components/user-profile-widget.js"></script>
     <script>
+        // Initialize Auth and update UI
+        function updateAuthUI() {
+            const authButtonsAnonymous = document.getElementById('authButtonsAnonymous');
+            const userMenuDropdown = document.getElementById('userMenuDropdown');
+            const userAvatar = document.getElementById('userAvatar');
+            const userMenuName = document.getElementById('userMenuName');
+            const userMenuHeaderName = document.getElementById('userMenuHeaderName');
+            const userMenuEmail = document.getElementById('userMenuEmail');
+
+            if (window.authManager && window.authManager.isLoggedIn()) {
+                // Show user menu for logged-in users
+                if (authButtonsAnonymous) authButtonsAnonymous.style.display = 'none';
+                if (userMenuDropdown) userMenuDropdown.style.display = 'block';
+
+                const user = window.authManager.getUserData();
+                if (user && userAvatar && userMenuName && userMenuHeaderName && userMenuEmail) {
+                    const initial = user.email ? user.email.charAt(0).toUpperCase() : '?';
+                    userAvatar.textContent = initial;
+                    userMenuName.textContent = user.display_name || user.email.split('@')[0];
+                    userMenuHeaderName.textContent = user.display_name || user.email.split('@')[0];
+                    userMenuEmail.textContent = user.email;
+                }
+            } else {
+                // Show auth buttons for anonymous users
+                if (authButtonsAnonymous) authButtonsAnonymous.style.display = 'flex';
+                if (userMenuDropdown) userMenuDropdown.style.display = 'none';
+            }
+        }
+
+        // Handle logout
+        async function handleLogout() {
+            if (confirm('Möchtest du dich wirklich abmelden?')) {
+                await window.authManager.logout();
+                updateAuthUI();
+            }
+        }
+
+        // Continue as guest (dismiss auth prompt)
+        function continueAsGuest() {
+            if (typeof closeAuthModal === 'function') {
+                closeAuthModal();
+            }
+            console.log('Continuing as guest user');
+        }
+
         // Initialize AuthManager and UserManager
         window.authManager = new AuthManager();
         window.userManager = new UserManager(authManager);
@@ -2219,6 +2264,7 @@
 
         // Listen for auth state changes
         window.addEventListener('auth-changed', () => {
+            updateAuthUI();
             initializeProfileTab();
         });
 

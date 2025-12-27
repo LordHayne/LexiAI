@@ -7,8 +7,10 @@ from qdrant_client.http.models import Filter, PointStruct
 from backend.utils.config import get_config_value
 import logging
 import backoff
+import os
 import threading
 from typing import Optional
+from urllib.parse import urlparse
 
 logger = logging.getLogger("qdrant_client")
 
@@ -26,15 +28,33 @@ def _get_upsert_wait_default() -> bool:
     return _parse_bool(get_config_value("qdrant_upsert_wait", default="false"), default=False)
 
 
+def _build_url(host: str, port: int) -> str:
+    host = host.strip()
+    if not host:
+        host = "http://localhost"
+    if not host.startswith(("http://", "https://")):
+        host = f"http://{host}"
+    parsed = urlparse(host)
+    netloc = parsed.netloc
+    if parsed.port is None:
+        hostname = parsed.hostname or parsed.netloc
+        netloc = f"{hostname}:{port}"
+    return f"{parsed.scheme}://{netloc}{parsed.path}"
+
+
 def create_qdrant_client() -> QdrantClient:
     """
     Create Qdrant client with optimized connection settings.
 
     PERFORMANCE: Uses connection pooling and optimized timeouts.
     """
-    host = get_config_value("qdrant_host", default="http://localhost")
-    port = get_config_value("qdrant_port", default=6333)
-    url = f"{host}:{port}"
+    host = os.environ.get("LEXI_QDRANT_HOST") or get_config_value("qdrant_host", default="http://localhost")
+    port = os.environ.get("LEXI_QDRANT_PORT") or get_config_value("qdrant_port", default=6333)
+    try:
+        port = int(port)
+    except (TypeError, ValueError):
+        port = 6333
+    url = _build_url(str(host), port)
 
     logger.info(f"Creating Qdrant client for {url}")
     try:
@@ -46,7 +66,7 @@ def create_qdrant_client() -> QdrantClient:
             "https": None,  # Will use httpx defaults
         }
 
-        api_key = get_config_value("qdrant_api_key", default=None)
+        api_key = os.environ.get("LEXI_QDRANT_API_KEY") or get_config_value("qdrant_api_key", default=None)
         if api_key:
             client_config["api_key"] = api_key
 
@@ -117,6 +137,9 @@ def safe_search(*args, **kwargs):
     if "query_vector" in kwargs and "query" not in kwargs:
         kwargs = dict(kwargs)
         kwargs["query"] = kwargs.pop("query_vector")
+    if "query_filter" in kwargs and "filter" not in kwargs:
+        kwargs = dict(kwargs)
+        kwargs["filter"] = kwargs.pop("query_filter")
 
     response = client.query_points(*args, **kwargs)
     return response.points

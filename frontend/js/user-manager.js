@@ -221,6 +221,11 @@ class UserManager {
             const data = await response.json();
 
             // API returns {user: {...}, message: "..."}
+            if (data.user && data.user.user_id) {
+                this.userId = data.user.user_id;
+                localStorage.setItem(this.STORAGE_KEY_USER_ID, this.userId);
+            }
+
             if (data.user && data.user.display_name !== undefined) {
                 this.displayName = data.user.display_name;
 

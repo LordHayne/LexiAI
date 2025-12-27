@@ -71,6 +71,10 @@ class MemoryForgetRequest(BaseModel):
     user_id: str = Field(..., min_length=1, max_length=255, description="User identifier")
     query: str = Field(..., min_length=1, max_length=1000, description="Topic/query to forget")
     similarity_threshold: float = Field(default=0.75, ge=0.0, le=1.0, description="Minimum similarity score for deletion")
+    profile_keys: Optional[List[str]] = Field(
+        default=None,
+        description="Optional profile keys to clear (use ['*'] to clear profile)"
+    )
 
 
 class MemoryForgetResponse(BaseModel):
@@ -295,6 +299,7 @@ def _delete_memory_logic(
 
 @router.get("/memory/stats")
 async def get_memory_stats(
+    request: Request,
     memory_interface: QdrantMemoryInterface = Depends(get_memory_interface)
 ):
     """
@@ -308,7 +313,8 @@ async def get_memory_stats(
     try:
         from backend.memory.adapter import get_memory_stats
 
-        stats = get_memory_stats()
+        user_id = getattr(request.state, "user_id", "default")
+        stats = get_memory_stats(user_id)
 
         return {
             "total": stats.get("total", 0),
@@ -387,15 +393,16 @@ async def forget_memories(
         if not 0.0 <= request.similarity_threshold <= 1.0:
             raise ValueError("similarity_threshold must be between 0.0 and 1.0")
 
-        # Import delete function
-        from backend.memory.adapter import delete_memories_by_content
+        from backend.core.forget_handler import apply_forget_by_topic
 
-        # Delete memories
-        deleted_ids = delete_memories_by_content(
-            query=validated_query,
+        result = await apply_forget_by_topic(
             user_id=validated_user_id,
-            similarity_threshold=request.similarity_threshold
+            topic=validated_query,
+            is_german=False,
+            similarity_threshold=request.similarity_threshold,
+            profile_keys=request.profile_keys
         )
+        deleted_ids = result.deleted_ids
 
         logger.info(f"Forget command: deleted {len(deleted_ids)} memories for user {validated_user_id}")
 

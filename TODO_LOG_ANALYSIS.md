@@ -5,23 +5,23 @@ This list captures the remaining items from the log analysis, plus context for t
 ## Open items (highest impact first)
 
 1) Self-reflection gating (reduce LLM calls)
-- Only run self-reflection on risk cases: factual claims, external actions, long/uncertain answers.
-- Keep fast path for smart home and tool-free answers.
-- Consider a small heuristic (length, presence of numbers/entities, web/tool usage).
+- [x] Only run self-reflection on risk cases: factual claims, external actions, long/uncertain answers.
+- [x] Keep fast path for smart home and tool-free answers.
+- [x] Small heuristic added (length/uncertainty/no sources + tool usage gating).
 
 2) Cluster rebuild persistence
-- Avoid rebuilding clusters on every request.
-- Persist cluster model and rebuild only when enough new memories added (e.g., +50) or on a nightly schedule.
-- Look for the "Clusters not available - rebuilding automatically" path and add a cache + threshold.
+- [x] Avoid rebuilding clusters on every request.
+- [x] Persist cluster model and rebuild only when enough new memories added (e.g., +50) or on a nightly schedule.
+- [x] Look for the "Clusters not available - rebuilding automatically" path and add a cache + threshold.
 
 3) Qdrant scroll reductions (remaining)
-- We already limited chat history, memory stats, synthesizer, optimizer.
-- Still review other scroll-heavy paths (e.g., memory_synthesizer legacy, pattern_detector, goal_tracker, knowledge_gap_detector, optimizer subflows).
-- Prefer time filters (timestamp_ms) or recent-only windows with safe fallback.
+- [x] We already limited chat history, memory stats, synthesizer, optimizer.
+- [x] Still review other scroll-heavy paths (e.g., memory_synthesizer legacy, pattern_detector, goal_tracker, knowledge_gap_detector, optimizer subflows).
+- [x] Prefer time filters (timestamp_ms) or recent-only windows with safe fallback.
 
 4) UI auth enforcement (security)
-- Option: set LEXI_UI_AUTH_REQUIRED=true and ensure UI sends credentials (API key/JWT or proxy auth).
-- Alternative: enforce Basic Auth via reverse proxy.
+- [x] Option: set LEXI_UI_AUTH_REQUIRED=true and ensure UI sends credentials (API key/JWT or proxy auth).
+- [x] Alternative: enforce Basic Auth via reverse proxy.
 
 ## Context / defaults added
 - persistent_config.json now includes: chat_history_days, stats_days, memory_synthesis_days, optimizer_days,

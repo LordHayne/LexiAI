@@ -1,6 +1,12 @@
 import os
 import logging
+import json
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
 import numpy as np
+from filelock import FileLock
 from backend.qdrant.qdrant_interface import QdrantMemoryInterface
 from backend.embeddings.embedding_model import OllamaEmbeddingModel
 from backend.embeddings.embedding_cache import cached_embed_query
@@ -22,10 +28,155 @@ class ClusteredCategoryPredictor:
         self.clusters = {}
         self.labels = []
         self.embeddings = []
+        self.cache_dir = Path(os.environ.get("LEXI_CLUSTER_CACHE_DIR", "backend/data"))
+        self.cache_path = self.cache_dir / "category_clusters.npz"
+        self.meta_path = self.cache_dir / "category_clusters_meta.json"
+        self.lock_path = self.cache_dir / "category_clusters.lock"
+        self.rebuild_threshold = self._read_env_int("LEXI_CLUSTER_REBUILD_THRESHOLD", 50)
+        self.rebuild_interval_seconds = self._read_env_float("LEXI_CLUSTER_REBUILD_INTERVAL_HOURS", 24.0) * 3600.0
+        self.check_interval_seconds = self._read_env_float("LEXI_CLUSTER_CHECK_INTERVAL_SECONDS", 60.0)
+        self.last_build_count = None
+        self.last_build_ts = None
+        self.last_check_ts = None
+        self._load_cluster_cache()
+
+    @staticmethod
+    def _read_env_int(name: str, default: int) -> int:
+        try:
+            return int(os.environ.get(name, str(default)))
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _read_env_float(name: str, default: float) -> float:
+        try:
+            return float(os.environ.get(name, str(default)))
+        except (TypeError, ValueError):
+            return default
+
+    def _get_total_count(self) -> int:
+        try:
+            info = self.qdrant.client.get_collection(self.qdrant.collection)
+            return int(getattr(info, "points_count", 0) or 0)
+        except Exception as exc:
+            logger.debug(f"Failed to read collection count: {exc}")
+            return 0
+
+    def _load_cluster_cache(self) -> bool:
+        if not self.cache_path.exists() or not self.meta_path.exists():
+            return False
+
+        try:
+            with FileLock(str(self.lock_path), timeout=5):
+                with open(self.meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                with np.load(self.cache_path) as data:
+                    if "embeddings" not in data.files or "labels" not in data.files:
+                        return False
+                    embeddings = data["embeddings"]
+                    labels = data["labels"]
+
+            collection = meta.get("collection")
+            if collection and collection != self.qdrant.collection:
+                logger.info("Cluster cache collection mismatch; ignoring cached model")
+                return False
+
+            if embeddings is None or labels is None:
+                return False
+
+            if len(embeddings) != len(labels):
+                logger.warning("Cluster cache size mismatch; ignoring cached model")
+                return False
+
+            self.embeddings = embeddings
+            self.labels = labels
+            self.clusters.clear()
+            for idx, label in enumerate(self.labels):
+                if int(label) == -1:
+                    continue
+                self.clusters.setdefault(int(label), []).append(self.embeddings[idx])
+
+            self.last_build_count = meta.get("total_count", len(self.labels))
+            built_at = meta.get("built_at")
+            if built_at:
+                try:
+                    self.last_build_ts = datetime.fromisoformat(built_at).timestamp()
+                except ValueError:
+                    self.last_build_ts = None
+
+            logger.info(f"Loaded {len(self.clusters)} clusters from cache")
+            return True
+        except Exception as exc:
+            logger.warning(f"Failed to load cluster cache: {exc}")
+            return False
+
+    def _persist_cluster_cache(self, total_count: int) -> None:
+        if self.embeddings is None or self.labels is None:
+            return
+
+        embeddings = np.asarray(self.embeddings)
+        labels = np.asarray(self.labels)
+        if embeddings.size == 0 or labels.size == 0:
+            return
+
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        meta = {
+            "version": 1,
+            "collection": self.qdrant.collection,
+            "built_at": datetime.now(timezone.utc).isoformat(),
+            "total_count": total_count,
+            "embedding_dim": int(embeddings.shape[1]) if embeddings.ndim == 2 else 0,
+            "eps": self.eps,
+            "min_samples": self.min_samples,
+            "min_score": self.min_score
+        }
+
+        tmp_cache_path = self.cache_path.with_name(f"{self.cache_path.stem}.tmp.npz")
+        tmp_meta_path = self.meta_path.with_name(f"{self.meta_path.stem}.tmp.json")
+
+        try:
+            with FileLock(str(self.lock_path), timeout=10):
+                np.savez_compressed(tmp_cache_path, embeddings=embeddings, labels=labels)
+                os.replace(tmp_cache_path, self.cache_path)
+                with open(tmp_meta_path, "w", encoding="utf-8") as f:
+                    json.dump(meta, f, indent=2)
+                os.replace(tmp_meta_path, self.meta_path)
+        except Exception as exc:
+            logger.warning(f"Failed to persist cluster cache: {exc}")
+
+    def _should_rebuild_clusters(self, ignore_check_interval: bool = False) -> bool:
+        if self.last_build_count is None and self.last_build_ts is None:
+            return True
+
+        now = time.time()
+        if not ignore_check_interval:
+            if self.last_check_ts and (now - self.last_check_ts) < self.check_interval_seconds:
+                return False
+
+            self.last_check_ts = now
+        total_count = self._get_total_count()
+        if self.last_build_ts and (now - self.last_build_ts) >= self.rebuild_interval_seconds:
+            logger.info("Cluster rebuild interval reached")
+            return True
+        if total_count <= 0:
+            return False
+
+        if self.last_build_count is None:
+            return True
+
+        if total_count - self.last_build_count >= self.rebuild_threshold:
+            logger.info(
+                "Cluster rebuild threshold reached (%s new memories)",
+                total_count - self.last_build_count
+            )
+            return True
+
+        return False
 
     def rebuild_clusters(self):
         logger.info("Baue Clustermodell aus Qdrant-Datenbank auf")
         entries = self.qdrant.get_all_entries()
+        total_count = self._get_total_count() or len(entries)
         # MemoryEntry has 'embedding' attribute, not 'vector'
         vectors = [e.embedding for e in entries if e.embedding is not None]
 
@@ -46,6 +197,9 @@ class ClusteredCategoryPredictor:
                 continue
             self.clusters.setdefault(label, []).append(self.embeddings[i])
 
+        self.last_build_count = total_count
+        self.last_build_ts = time.time()
+        self._persist_cluster_cache(total_count)
         logger.info(f"{len(self.clusters)} Cluster gefunden")
 
     def predict_category(self, content: str) -> str:
@@ -58,7 +212,8 @@ class ClusteredCategoryPredictor:
         logger.debug(f"Bestimme Kategorie für Inhalt: {content[:50]}...")
 
         # FIXED: Thread-safe lazy initialization with double-checked locking
-        if not self.clusters:
+        needs_rebuild = self._should_rebuild_clusters() if self.clusters else True
+        if not self.clusters or needs_rebuild:
             # Import threading only when needed
             import threading
             if not hasattr(self, '_rebuild_lock'):
@@ -67,12 +222,25 @@ class ClusteredCategoryPredictor:
             with self._rebuild_lock:
                 # Double-check: another thread might have built clusters
                 if not self.clusters:
-                    logger.info("Clusters not available - rebuilding automatically for consistency")
+                    if not self._load_cluster_cache():
+                        logger.info("Clusters not available - rebuilding automatically for consistency")
+                        try:
+                            self.rebuild_clusters()
+                        except Exception as e:
+                            logger.warning(f"Failed to rebuild clusters: {e} - returning 'uncategorized'")
+                            return "uncategorized"
+                    elif needs_rebuild and self._should_rebuild_clusters(ignore_check_interval=True):
+                        logger.info("Rebuilding clusters based on threshold or interval")
+                        try:
+                            self.rebuild_clusters()
+                        except Exception as e:
+                            logger.warning(f"Failed to rebuild clusters: {e} - using cached clusters")
+                elif needs_rebuild and self._should_rebuild_clusters(ignore_check_interval=True):
+                    logger.info("Rebuilding clusters based on threshold or interval")
                     try:
                         self.rebuild_clusters()
                     except Exception as e:
-                        logger.warning(f"Failed to rebuild clusters: {e} - returning 'uncategorized'")
-                        return "uncategorized"
+                        logger.warning(f"Failed to rebuild clusters: {e} - using existing clusters")
 
                 # If still no clusters after rebuild, return uncategorized
                 if not self.clusters:

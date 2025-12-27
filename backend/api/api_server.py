@@ -703,6 +703,8 @@ async def ui_chat(
     from backend.api.v1.routes.chat import get_chat_components, validate_chat_request, ChatError, create_streaming_response, DEFAULT_TIMEOUT
     from backend.core.chat_processing_with_tools import process_chat_with_tools
     from backend.core.chat_logic import process_chat_message_async, process_chat_message_streaming
+    from backend.core.chat_processing import _stream_response
+    from backend.core.query_classifier import classify_query, QueryType
     from backend.config.feature_flags import FeatureFlags
     from fastapi.responses import StreamingResponse, JSONResponse
 
@@ -738,6 +740,15 @@ async def ui_chat(
                 async def stream_with_history():
                     collected_chunks = []
                     turn_id = None
+                    use_tool_calling = False
+
+                    if FeatureFlags.is_enabled("llm_tool_calling"):
+                        query_type = classify_query(chat_request.message)
+                        use_tool_calling = query_type in {
+                            QueryType.SMART_HOME_CONTROL,
+                            QueryType.SMART_HOME_QUERY,
+                            QueryType.SMART_HOME_AUTOMATION,
+                        }
 
                     try:
                         metadata = {
@@ -747,32 +758,58 @@ async def ui_chat(
                         }
                         yield f"data: {json.dumps(metadata)}\n\n"
 
-                        async for chunk in process_chat_message_streaming(
-                            chat_request.message,
-                            chat_client=chat_client,
-                            vectorstore=vectorstore,
-                            memory=memory,
-                            embeddings=embeddings,
-                            collect_feedback=FeatureFlags.is_enabled("memory_feedback"),
-                            user_id=chat_request.user_id
-                        ):
-                            if isinstance(chunk, dict):
-                                chunk_text = chunk.get("chunk")
-                                if chunk_text:
-                                    collected_chunks.append(chunk_text)
-                                if chunk.get("final_chunk"):
-                                    turn_id = chunk.get("turn_id")
-                                yield f"data: {json.dumps(chunk)}\n\n"
-                            elif isinstance(chunk, str):
+                        if use_tool_calling:
+                            response_data = await process_chat_with_tools(
+                                message=chat_request.message,
+                                chat_client=chat_client,
+                                vectorstore=vectorstore,
+                                memory=memory,
+                                embeddings=embeddings,
+                                user_id=chat_request.user_id
+                            )
+                            response_text = response_data.get("response", "")
+                            turn_id = response_data.get("turn_id")
+
+                            async for chunk in _stream_response(response_text):
                                 collected_chunks.append(chunk)
-                                chunk_data = {
-                                    "type": "content",
-                                    "content": chunk,
-                                    "timestamp": datetime.datetime.now().isoformat()
-                                }
-                                yield f"data: {json.dumps(chunk_data)}\n\n"
-                            else:
-                                logger.warning(f"Unexpected chunk type: {type(chunk)}")
+                                yield f"data: {json.dumps({'chunk': chunk, 'final_chunk': False})}\n\n"
+
+                            final_payload = {
+                                "final_chunk": True,
+                                "source": response_data.get("source", "llm_tool_calling"),
+                                "relevant_memory": [],
+                                "feedback_possible": response_data.get("final", True),
+                                "memory_saved_id": None,
+                                "turn_id": turn_id
+                            }
+                            yield f"data: {json.dumps(final_payload)}\n\n"
+                        else:
+                            async for chunk in process_chat_message_streaming(
+                                chat_request.message,
+                                chat_client=chat_client,
+                                vectorstore=vectorstore,
+                                memory=memory,
+                                embeddings=embeddings,
+                                collect_feedback=FeatureFlags.is_enabled("memory_feedback"),
+                                user_id=chat_request.user_id
+                            ):
+                                if isinstance(chunk, dict):
+                                    chunk_text = chunk.get("chunk")
+                                    if chunk_text:
+                                        collected_chunks.append(chunk_text)
+                                    if chunk.get("final_chunk"):
+                                        turn_id = chunk.get("turn_id")
+                                    yield f"data: {json.dumps(chunk)}\n\n"
+                                elif isinstance(chunk, str):
+                                    collected_chunks.append(chunk)
+                                    chunk_data = {
+                                        "type": "content",
+                                        "content": chunk,
+                                        "timestamp": datetime.datetime.now().isoformat()
+                                    }
+                                    yield f"data: {json.dumps(chunk_data)}\n\n"
+                                else:
+                                    logger.warning(f"Unexpected chunk type: {type(chunk)}")
 
                         if chat_request.session_id:
                             from backend.qdrant.chat_history_store import store_chat_turn

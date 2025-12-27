@@ -22,7 +22,6 @@ from backend.config.feature_flags import FeatureFlags
 from backend.memory.cache import get_memory_cache, generate_query_hash
 from backend.memory.memory_bootstrap import get_predictor
 from backend.qdrant.qdrant_interface import QdrantMemoryInterface
-from backend.qdrant.client_wrapper import QdrantClient
 from backend.memory.category_predictor import ClusteredCategoryPredictor
 from backend.core.component_cache import get_cached_components
 from backend.memory.memory_intelligence import track_memory_retrieval, track_memory_usage
@@ -708,7 +707,7 @@ async def process_chat_message_streaming(message: str, user_id: str, context: Op
         yield f"Fehler: {str(e)}", False, "fallback", []
 
 
-def get_memory_stats(user_id: str = "default") -> Dict[str, int]:
+def get_memory_stats(user_id: str = "default") -> Dict[str, Any]:
     """
     Get memory statistics by category.
 
@@ -716,11 +715,55 @@ def get_memory_stats(user_id: str = "default") -> Dict[str, int]:
         user_id: User identifier
 
     Returns:
-        Dictionary mapping categories to counts
+        Dictionary with total counts and category breakdown
     """
     try:
+        user_id = validate_user_id(user_id)
+        bundle = get_cached_components()
+        vectorstore = bundle.vectorstore
+
+        if hasattr(vectorstore, "client"):
+            try:
+                cutoff_days = int(os.environ.get("LEXI_STATS_DAYS", str(MemoryConfig.MAX_STATS_DAYS)))
+            except (TypeError, ValueError):
+                cutoff_days = MemoryConfig.MAX_STATS_DAYS
+
+            cutoff_ms = None
+            if cutoff_days > 0:
+                cutoff_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=cutoff_days)
+                cutoff_ms = int(cutoff_dt.timestamp() * 1000)
+
+            try:
+                from qdrant_client.models import Filter, FieldCondition, MatchValue, Range
+
+                must_filters = [FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+                if cutoff_ms is not None:
+                    must_filters.append(FieldCondition(key="timestamp_ms", range=Range(gte=cutoff_ms)))
+
+                count_result = vectorstore.client.count(
+                    collection_name=vectorstore.collection,
+                    count_filter=Filter(must=must_filters),
+                    exact=True,
+                )
+                total = getattr(count_result, "count", None)
+                if total is None and isinstance(count_result, dict):
+                    total = count_result.get("count", 0)
+            except Exception as e:
+                logger.warning(f"Failed to count memories via Qdrant: {e}")
+                total = 0
+
+            categories = get_memory_stats_from_qdrant(user_id)
+            if not total:
+                total = sum(categories.values())
+
+            return {
+                "total": total,
+                "total_memories": total,
+                "categories": categories,
+            }
+
         memories = retrieve_memories(user_id, limit=100)
-        category_counts = {}
+        category_counts: Dict[str, int] = {}
 
         for memory in memories:
             raw_cat = memory.category or memory.source
@@ -733,10 +776,11 @@ def get_memory_stats(user_id: str = "default") -> Dict[str, int]:
 
             category_counts[cat] = category_counts.get(cat, 0) + 1
 
-        return category_counts
+        total = sum(category_counts.values())
+        return {"total": total, "total_memories": total, "categories": category_counts}
     except Exception as e:
         logger.error(f"Error getting memory stats: {str(e)}")
-        return {}
+        return {"total": 0, "total_memories": 0, "categories": {}}
 
 
 def get_memory_stats_from_qdrant(user_id: str = "default") -> Dict[str, int]:
@@ -755,56 +799,90 @@ def get_memory_stats_from_qdrant(user_id: str = "default") -> Dict[str, int]:
         vectorstore = bundle.vectorstore
 
         if hasattr(vectorstore, 'client'):
+            from backend.qdrant.client_wrapper import safe_scroll
             try:
                 cutoff_days = int(os.environ.get("LEXI_STATS_DAYS", str(MemoryConfig.MAX_STATS_DAYS)))
             except (TypeError, ValueError):
                 cutoff_days = MemoryConfig.MAX_STATS_DAYS
-            must_filters = [{"key": "user_id", "match": {"value": user_id}}]
+
+            cutoff_ms = None
             if cutoff_days > 0:
                 cutoff_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=cutoff_days)
                 cutoff_ms = int(cutoff_dt.timestamp() * 1000)
-                must_filters.append({"key": "timestamp_ms", "range": {"gte": cutoff_ms}})
 
-            search_filter = {"must": must_filters}
-            try:
-                scroll_result = vectorstore.client.scroll(
-                    collection_name=MiddlewareConfig.get_memory_collection(),
-                    scroll_filter=search_filter,
-                    with_payload=True,
-                    limit=1000
-                )
-            except Exception:
-                scroll_result = vectorstore.client.scroll(
-                    collection_name=MiddlewareConfig.get_memory_collection(),
-                    scroll_filter={"must": [{"key": "user_id", "match": {"value": user_id}}]},
-                    with_payload=True,
-                    limit=1000
-                )
-            points = scroll_result.points if hasattr(scroll_result, "points") else scroll_result.get("points", [])
-            if not points and cutoff_days > 0:
-                scroll_result = vectorstore.client.scroll(
-                    collection_name=MiddlewareConfig.get_memory_collection(),
-                    scroll_filter={"must": [{"key": "user_id", "match": {"value": user_id}}]},
-                    with_payload=True,
-                    limit=1000
-                )
-                points = scroll_result.points if hasattr(scroll_result, "points") else scroll_result.get("points", [])
+            def _build_filter(include_cutoff: bool) -> Dict[str, Any]:
+                must_filters = [{"key": "user_id", "match": {"value": user_id}}]
+                if include_cutoff and cutoff_ms is not None:
+                    must_filters.append({"key": "timestamp_ms", "range": {"gte": cutoff_ms}})
+                return {"must": must_filters}
 
-            category_counts = {}
-            for point in points:
-                raw_cat = point.payload.get("category")
+            def _extract_scroll(scroll_result):
+                points = getattr(scroll_result, "points", None)
+                next_offset = getattr(scroll_result, "next_page_offset", None)
+                if points is None:
+                    if isinstance(scroll_result, tuple):
+                        points, next_offset = scroll_result
+                    else:
+                        points = scroll_result.get("points", [])
+                        next_offset = scroll_result.get("next_page_offset", None)
+                return points or [], next_offset
+
+            def _count_by_category(search_filter: Dict[str, Any]) -> Dict[str, int]:
+                category_counts: Dict[str, int] = {}
+                offset = None
+                total_processed = 0
+                scroll_fn = safe_scroll
                 try:
-                    cat = str(raw_cat).strip().lower() if raw_cat else "unknown"
-                    if cat in ("", "none", "null"):
-                        cat = "unknown"
+                    client_module = getattr(vectorstore.client.__class__, "__module__", "")
+                    if not client_module.startswith("qdrant_client"):
+                        scroll_fn = vectorstore.client.scroll
                 except Exception:
-                    cat = "unknown"
+                    scroll_fn = vectorstore.client.scroll
 
-                category_counts[cat] = category_counts.get(cat, 0) + 1
+                while True:
+                    scroll_result = scroll_fn(
+                        collection_name=MiddlewareConfig.get_memory_collection(),
+                        scroll_filter=search_filter,
+                        with_payload=True,
+                        limit=1000,
+                        offset=offset
+                    )
+                    points, next_offset = _extract_scroll(scroll_result)
+                    if not points:
+                        break
+
+                    for point in points:
+                        payload = point.payload or {}
+                        raw_cat = payload.get("category")
+                        try:
+                            cat = str(raw_cat).strip().lower() if raw_cat else "unknown"
+                            if cat in ("", "none", "null"):
+                                cat = "unknown"
+                        except Exception:
+                            cat = "unknown"
+                        category_counts[cat] = category_counts.get(cat, 0) + 1
+                        total_processed += 1
+                        if total_processed >= MemoryConfig.MAX_STATS_ENTRIES:
+                            return category_counts
+
+                    if not next_offset:
+                        break
+                    offset = next_offset
+
+                return category_counts
+
+            try:
+                search_filter = _build_filter(include_cutoff=True)
+                category_counts = _count_by_category(search_filter)
+            except Exception:
+                category_counts = _count_by_category(_build_filter(include_cutoff=False))
+
+            if not category_counts and cutoff_ms is not None:
+                category_counts = _count_by_category(_build_filter(include_cutoff=False))
 
             return category_counts
-        else:
-            return get_memory_stats(user_id)
+
+        return get_memory_stats(user_id)
 
     except Exception as e:
         logger.error(f"Error getting memory stats from Qdrant: {str(e)}")
@@ -939,6 +1017,8 @@ def delete_memories_by_content(query: str, user_id: str, similarity_threshold: f
         # Delete matching memories
         for memory in memories:
             try:
+                if memory.category in {"user_fact", "user_profile"}:
+                    continue
                 # Convert string ID to UUID
                 uuid_id = UUID(memory.id)
                 vectorstore.delete_entry(uuid_id)
@@ -967,3 +1047,74 @@ def delete_memories_by_content(query: str, user_id: str, similarity_threshold: f
     except Exception as e:
         logger.error(f"Error deleting memories by content: {str(e)}")
         raise MemoryError(f"Failed to delete memories: {str(e)}")
+
+
+def delete_user_facts(user_id: str, fact_kind: Optional[str] = None, fact_category: Optional[str] = None) -> int:
+    """
+    Delete user_fact entries for a user (optionally filtered by kind/category).
+
+    Args:
+        user_id: User identifier
+        fact_kind: Optional fact_kind to delete (e.g. "name", "interest")
+        fact_category: Optional fact_category to delete (e.g. "music")
+
+    Returns:
+        Number of deleted entries
+    """
+    try:
+        user_id = validate_user_id(user_id)
+
+        from backend.qdrant.client_wrapper import safe_scroll, safe_delete, get_batch_size
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+        bundle = get_cached_components()
+        vectorstore = bundle.vectorstore
+
+        must_filters = [
+            FieldCondition(key="user_id", match=MatchValue(value=user_id)),
+            FieldCondition(key="category", match=MatchValue(value="user_fact")),
+        ]
+        if fact_kind:
+            must_filters.append(FieldCondition(key="fact_kind", match=MatchValue(value=fact_kind)))
+        if fact_category:
+            must_filters.append(FieldCondition(key="fact_category", match=MatchValue(value=fact_category)))
+
+        deleted_count = 0
+        batch_size = max(get_batch_size(), 50)
+        next_offset = None
+
+        while True:
+            points, next_offset = safe_scroll(
+                collection_name=vectorstore.collection,
+                scroll_filter=Filter(must=must_filters),
+                limit=batch_size,
+                offset=next_offset,
+                with_payload=False,
+                with_vectors=False
+            )
+            if not points:
+                break
+
+            ids = [str(point.id) for point in points]
+            safe_delete(collection_name=vectorstore.collection, points_selector=ids)
+            deleted_count += len(ids)
+
+            if next_offset is None:
+                break
+
+        if deleted_count:
+            try:
+                cache = get_memory_cache()
+                if cache:
+                    cache.invalidate_user(user_id)
+            except Exception as cache_error:
+                logger.warning(f"Cache invalidation failed (non-critical): {cache_error}")
+
+        logger.info(f"Deleted {deleted_count} user_fact entries for user {user_id}")
+        return deleted_count
+    except ValueError as e:
+        logger.error(f"Validation error deleting user facts: {str(e)}")
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting user facts: {str(e)}")
+        raise MemoryError(f"Failed to delete user facts: {str(e)}")

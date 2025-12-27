@@ -11,6 +11,7 @@ from backend.utils.model_utils import call_model_async
 from backend.memory.activity_tracker import track_activity
 from backend.memory.conversation_tracker import get_conversation_tracker
 from backend.services.session_manager import get_session_manager
+from backend.services.profile_builder import ProfileBuilder
 from backend.services.user_store import build_user_profile_context
 from backend.core.llm_tool_calling import select_tools, execute_tool, ToolResult
 from backend.core.llm_self_reflection import verify_answer_quality, generate_honest_fallback
@@ -30,6 +31,11 @@ from backend.core.memory_handler import (
     record_conversation_turn
 )
 from backend.core.smart_home_handler import classify_smart_home_storage_strategy
+from backend.core.forget_handler import (
+    detect_forget_topic,
+    detect_profile_forget_keys,
+    apply_forget_by_topic,
+)
 
 logger = logging.getLogger("tool_based_chat")
 
@@ -64,6 +70,55 @@ async def process_chat_with_tools(
         clean_message = clean_message.replace(cmd, "").strip()
 
     language = "de" if is_german else "en"
+
+    forget_topic = detect_forget_topic(clean_message)
+
+    if forget_topic:
+        logger.info(f"Forget command detected for topic: {forget_topic}")
+        try:
+            profile_keys = detect_profile_forget_keys(clean_message)
+            result = await apply_forget_by_topic(
+                user_id=user_id,
+                topic=forget_topic,
+                is_german=is_german,
+                similarity_threshold=0.70,
+                profile_keys=profile_keys or None
+            )
+            response_content = result.response
+            deleted_ids = result.deleted_ids
+        except Exception as e:
+            logger.error(f"Error processing forget command: {str(e)}", exc_info=True)
+            error_msg = f"Fehler beim Löschen: {str(e)}" if is_german else f"Error deleting memories: {str(e)}"
+            session_manager = get_session_manager()
+            try:
+                session_manager.add_message(user_id, "user", clean_message)
+                session_manager.add_message(user_id, "assistant", error_msg)
+            except Exception as session_error:
+                logger.warning(f"Failed to add forget error to session history: {session_error}")
+            return {
+                "response": error_msg,
+                "relevant_memory": [],
+                "final": True,
+                "source": "forget_command",
+                "turn_id": None,
+                "deleted_count": 0
+            }
+
+        session_manager = get_session_manager()
+        try:
+            session_manager.add_message(user_id, "user", clean_message)
+            session_manager.add_message(user_id, "assistant", response_content)
+        except Exception as e:
+            logger.warning(f"Failed to add forget response to session history: {e}")
+
+        return {
+            "response": response_content,
+            "relevant_memory": [],
+            "final": True,
+            "source": "forget_command",
+            "turn_id": None,
+            "deleted_count": len(deleted_ids)
+        }
 
     # FIX: Initialize memory_used flag (used in return statement)
     memory_used = not no_think
@@ -134,6 +189,8 @@ async def process_chat_with_tools(
         user_profile = build_user_profile_context(user_id)
     except Exception as e:
         logger.warning(f"Failed to load user profile for {user_id}: {e}")
+
+    profile_builder = ProfileBuilder(llm_client=chat_client)
 
     user_display_name = None
     if user_profile:
@@ -592,11 +649,22 @@ async def process_chat_with_tools(
 
     # Phase 5: Self-Reflection (CONDITIONAL)
     tools_were_used = bool(tool_results) or needs_multi_step
+    has_web_results = any(
+        result.success and result.tool_name == "web_search" and result.data and result.data.get("results")
+        for result in tool_results
+    )
+    has_sources = bool(sources) or bool(relevant_docs) or has_web_results
+    should_reflect, reflection_reason = needs_self_reflection(
+        query_type=query_type,
+        tools_used=tools_were_used,
+        response_content=response_content,
+        has_sources=has_sources
+    )
 
-    if needs_self_reflection(query_type, tools_were_used):
-        logger.info(f"🔍 Phase 5: Self-reflection check...")
+    if should_reflect:
+        logger.info(f"🔍 Phase 5: Self-reflection check ({reflection_reason})...")
     else:
-        logger.info(f"⚡ Phase 5: Skipping self-reflection (simple query or no tools)")
+        logger.info(f"⚡ Phase 5: Skipping self-reflection ({reflection_reason})")
         # Skip directly to Phase 6: Store in memory (INTELLIGENT)
         if not no_think:
             logger.info(f"💾 Phase 6: Storing conversation in memory (using memory_handler)...")
@@ -608,6 +676,14 @@ async def process_chat_with_tools(
                 is_german=is_german,
                 memory=memory
             )
+
+        await _update_user_profile_from_conversation(
+            profile_builder=profile_builder,
+            user_id=user_id,
+            user_message=clean_message,
+            assistant_response=response_content,
+            current_profile=user_profile or {}
+        )
 
         # Record conversation turn using memory_handler
         turn_id = record_conversation_turn(user_id, message, response_content, relevant_docs)
@@ -667,6 +743,14 @@ async def process_chat_with_tools(
             is_german=is_german,
             memory=memory
         )
+
+    await _update_user_profile_from_conversation(
+        profile_builder=profile_builder,
+        user_id=user_id,
+        user_message=clean_message,
+        assistant_response=response_content,
+        current_profile=user_profile or {}
+    )
 
     # Record conversation turn using memory_handler
     turn_id = record_conversation_turn(user_id, message, response_content, relevant_docs)
@@ -781,6 +865,49 @@ def _format_tool_results(results: List[ToolResult]) -> str:
                     formatted += f"    - {err}\n"
 
     return formatted
+
+
+async def _update_user_profile_from_conversation(
+    profile_builder: ProfileBuilder,
+    user_id: str,
+    user_message: str,
+    assistant_response: str,
+    current_profile: Dict[str, Any]
+) -> None:
+    """
+    Extract and persist user profile signals from the latest conversation.
+    """
+    try:
+        if not profile_builder.should_update_profile(user_message):
+            logger.debug("⏭️ Skipping profile update (message too short/generic)")
+            return
+
+        logger.info("🧠 Starting profile learning from conversation...")
+        updated_profile = await profile_builder.extract_profile_info(
+            user_message=user_message,
+            assistant_response=assistant_response,
+            current_profile=current_profile
+        )
+
+        if updated_profile != current_profile:
+            logger.info(f"📝 Profile updated with new information: {list(updated_profile.keys())}")
+            summary = profile_builder.get_profile_summary(updated_profile)
+            logger.debug(f"Profile Summary:\n{summary}")
+
+            try:
+                from backend.services.user_store import get_user_store
+                get_user_store().update_user(user_id, {"profile": updated_profile})
+                logger.info(f"💾 Profile persisted for user {user_id}")
+                try:
+                    from backend.services.user_profile_qdrant import upsert_user_profile_in_qdrant
+                    await asyncio.to_thread(upsert_user_profile_in_qdrant, user_id, updated_profile)
+                except Exception as e:
+                    logger.warning(f"Failed to upsert profile in Qdrant for {user_id}: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to persist profile for {user_id}: {e}")
+
+    except Exception as e:
+        logger.error(f"❌ Error in profile learning: {e}", exc_info=True)
 
 
 # Convenience wrapper for compatibility

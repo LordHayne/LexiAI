@@ -3,6 +3,7 @@ Query Classifier: Fast detection of simple queries for performance optimization
 """
 import re
 import logging
+from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -212,32 +213,123 @@ def needs_multi_step_check(message: str, query_type: str) -> bool:
     return needs_check
 
 
-def needs_self_reflection(query_type: str, tools_used: bool) -> bool:
+_UNCERTAINTY_MARKERS = [
+    "ich bin mir nicht sicher",
+    "ich weiss nicht",
+    "ich weiß nicht",
+    "vielleicht",
+    "möglicherweise",
+    "moeglicherweise",
+    "eventuell",
+    "kann sein",
+    "unsicher",
+    "i'm not sure",
+    "im not sure",
+    "not sure",
+    "maybe",
+    "possibly",
+    "might be",
+    "uncertain",
+    "i think",
+    "ich glaube",
+]
+
+_EXTERNAL_ACTION_MARKERS = [
+    "ich habe bestellt",
+    "ich habe gebucht",
+    "ich habe bezahlt",
+    "ich habe ueberwiesen",
+    "ich habe überwiesen",
+    "ich habe gekauft",
+    "ich habe storniert",
+    "ich habe gekuendigt",
+    "ich habe gekündigt",
+    "ich habe gesendet",
+    "ich habe verschickt",
+    "ich habe angerufen",
+    "ich habe terminiert",
+    "ich habe eingeplant",
+    "i ordered",
+    "i booked",
+    "i paid",
+    "i transferred",
+    "i purchased",
+    "i bought",
+    "i canceled",
+    "i cancelled",
+    "i scheduled",
+    "i set up",
+    "i sent",
+    "i emailed",
+    "i called",
+]
+
+_NUMBER_PATTERN = re.compile(r"\\d")
+_LONG_RESPONSE_WORDS = 80
+_LONG_RESPONSE_CHARS = 500
+
+
+def _self_reflection_risk_signals(
+    response_content: str,
+    tools_used: bool,
+    has_sources: bool
+) -> List[str]:
+    if not response_content:
+        return []
+
+    text_lower = response_content.lower()
+    reasons = []
+
+    if any(marker in text_lower for marker in _UNCERTAINTY_MARKERS):
+        reasons.append("uncertain")
+
+    if any(marker in text_lower for marker in _EXTERNAL_ACTION_MARKERS):
+        reasons.append("external_action")
+
+    has_numbers = bool(_NUMBER_PATTERN.search(text_lower))
+    if has_numbers:
+        reasons.append("numbers")
+
+    word_count = len(response_content.split())
+    if word_count >= _LONG_RESPONSE_WORDS or len(response_content) >= _LONG_RESPONSE_CHARS:
+        reasons.append("long_answer")
+
+    if tools_used and (not has_sources or has_numbers or "long_answer" in reasons):
+        reasons.append("tool_usage")
+
+    if not has_sources and (has_numbers or "long_answer" in reasons):
+        reasons.append("no_sources")
+
+    return reasons
+
+
+def needs_self_reflection(
+    query_type: str,
+    tools_used: bool,
+    response_content: str,
+    has_sources: bool
+) -> tuple[bool, str]:
     """
     Check if self-reflection is needed.
 
     Args:
         query_type: QueryType constant
         tools_used: Whether tools were used
+        response_content: Assistant response text
+        has_sources: Whether sources are available
 
     Returns:
-        True if self-reflection needed
+        Tuple[should_reflect, reason]
     """
     # NEVER use self-reflection for Smart Home (instant confirmation needed!)
     if query_type in [QueryType.SMART_HOME_CONTROL, QueryType.SMART_HOME_QUERY]:
-        logger.info("⚡ Skipping self-reflection (Smart Home - needs instant response)")
-        return False
+        return False, "smart_home"
 
-    # Only use self-reflection for complex queries with tools
-    if query_type != QueryType.COMPLEX_QUERY:
-        logger.info("⚡ Skipping self-reflection (simple query)")
-        return False
+    reasons = _self_reflection_risk_signals(response_content, tools_used, has_sources)
+    if not reasons:
+        return False, "low_risk"
 
-    if not tools_used:
-        logger.info("⚡ Skipping self-reflection (no tools used)")
-        return False
-
-    return True
+    return True, ", ".join(reasons)
 
 
 def get_fast_path_response(query_type: str, message: str, language: str = "de") -> str:

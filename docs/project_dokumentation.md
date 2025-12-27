@@ -50,6 +50,7 @@ Betroffene Dateien:
 - Qdrant: Host/Port in Config oder ENV
 - Ollama: LLM/Embedding URL in Config oder ENV
 - Home Assistant (optional): `LEXI_HA_URL`, `LEXI_HA_TOKEN`
+- Basic Auth via Reverse Proxy: `docs/basic_auth_reverse_proxy.md`
 
 ## Notizen
 Diese Datei ist eine komprimierte Zusammenfassung der entfernten MD‑Dokumente.

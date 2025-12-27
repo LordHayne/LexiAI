@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from langchain_ollama import OllamaEmbeddings, ChatOllama
 
 from backend.qdrant.qdrant_interface import QdrantMemoryInterface
+from backend.qdrant.client_wrapper import get_qdrant_client
 from qdrant_client import QdrantClient, models
 from qdrant_client.http.exceptions import UnexpectedResponse
 # Langchain imports sind schnell, aber wir importieren ConversationBufferWindowMemory lazy
@@ -152,24 +153,18 @@ class ComponentInitializer:
             return False
 
     def _init_vectorstore(self, embeddings: "OllamaEmbeddings", dimensions: int) -> Tuple[QdrantMemoryInterface, QdrantClient, Optional[str]]:
-        host = self._normalize_qdrant_host()
-        port = MiddlewareConfig.get_qdrant_port()
         name = MiddlewareConfig.get_memory_collection()
 
-        logger.info(f"Connecting to Qdrant at {host}:{port}")
+        logger.info("Connecting to Qdrant via client_wrapper")
 
         try:
-            client = QdrantClient(host=host, port=port)
+            client = get_qdrant_client()
             warn = self._ensure_collection_exists(client, name, dimensions)
 
             store = QdrantMemoryInterface(qdrant_client=client, collection_name=name, embeddings=embeddings)
             return store, client, warn
         except Exception as e:
             raise ConfigurationError(f"Vectorstore init failed: {e}")
-
-    def _normalize_qdrant_host(self) -> str:
-        host = MiddlewareConfig.get_qdrant_host()
-        return host.split("//")[-1] if "//" in host else host
 
     def _ensure_collection_exists(self, client: QdrantClient, name: str, dim: int) -> Optional[str]:
         try:
@@ -274,6 +269,14 @@ class ComponentInitializer:
                 field_schema=models.PayloadSchemaType.KEYWORD
             )
             logger.info(f"✓ Created index on timestamp")
+
+            # Index timestamp_ms (integer) - for efficient range filters
+            client.create_payload_index(
+                collection_name=name,
+                field_name="timestamp_ms",
+                field_schema=models.PayloadSchemaType.INTEGER
+            )
+            logger.info("✓ Created index on timestamp_ms")
 
             logger.info(f"✅ All payload indices created for '{name}'")
         except Exception as e:

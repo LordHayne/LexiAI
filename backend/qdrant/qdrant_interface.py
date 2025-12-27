@@ -121,7 +121,9 @@ class QdrantMemoryInterface:
                         vector=vector,
                         payload={k: v for k, v in {
                             "content": content,
+                            "user_id": entry.user_id,
                             "timestamp": entry.timestamp.isoformat(),
+                            "timestamp_ms": int(entry.timestamp.timestamp() * 1000) if entry.timestamp else None,
                             "category": entry.category,
                             "tags": entry.tags,
                             "source": entry.source,
@@ -468,7 +470,10 @@ class QdrantMemoryInterface:
             # The scroll returns a tuple: (points, next_page_offset)
             # To get accurate count, we need to scroll through all pages
             total_count = 0
-            points, next_offset = result
+            points = getattr(result, "points", None)
+            next_offset = getattr(result, "next_page_offset", None)
+            if points is None:
+                points, next_offset = result
             total_count += len(points)
 
             # If there are more pages, continue scrolling
@@ -483,7 +488,10 @@ class QdrantMemoryInterface:
                     with_payload=False,
                     with_vectors=False
                 )
-                points, next_offset = result
+                points = getattr(result, "points", None)
+                next_offset = getattr(result, "next_page_offset", None)
+                if points is None:
+                    points, next_offset = result
                 total_count += len(points)
 
             logger.debug(f"📊 User {user_id} has {total_count} memories")

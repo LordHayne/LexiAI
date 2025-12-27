@@ -4,8 +4,9 @@ import json
 import logging
 import time
 from contextlib import contextmanager
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from backend.core.bootstrap import initialize_components
+from backend.core.query_classifier import classify_query, needs_self_reflection
 from backend.utils.model_utils import call_model_async
 from backend.memory.adapter import store_memory
 from backend.memory.activity_tracker import track_activity
@@ -19,6 +20,11 @@ from backend.services.profile_context import ProfileContextBuilder
 from backend.services.user_store import build_user_profile_context
 from backend.services.session_manager import get_session_manager
 from backend.config.persistence import ConfigPersistence
+from backend.core.forget_handler import (
+    detect_forget_topic,
+    detect_profile_forget_keys,
+    apply_forget_by_topic,
+)
 
 logger = logging.getLogger("memory_decisions")
 
@@ -114,49 +120,22 @@ async def _run_chat_logic(
         for cmd in ["/nothink", "/no think", "/deutsch", "/de", "/english", "/en"]:
             clean_message = clean_message.replace(cmd, "").strip()
 
-        # Check for forget/delete commands
-        forget_patterns = [
-            r"vergiss\s+(.+)",
-            r"forget\s+(.+)",
-            r"lösche\s+erinnerung(?:en)?\s+(?:an|über|zu)\s+(.+)",
-            r"delete\s+memor(?:y|ies)\s+(?:about|of)\s+(.+)",
-            r"vergiss\s+was\s+du\s+über\s+(.+)\s+weißt",
-            r"forget\s+what\s+you\s+know\s+about\s+(.+)"
-        ]
-
-        import re
-        forget_topic = None
-        for pattern in forget_patterns:
-            match = re.search(pattern, clean_message.lower())
-            if match:
-                forget_topic = match.group(1).strip()
-                break
+        forget_topic = detect_forget_topic(clean_message)
 
         # Handle forget command
         if forget_topic:
             logger.info(f"Forget command detected for topic: {forget_topic}")
             try:
-                from backend.memory.adapter import delete_memories_by_content
-
-                # Delete memories about the topic
-                deleted_ids = delete_memories_by_content(
-                    query=forget_topic,
+                profile_keys = detect_profile_forget_keys(clean_message)
+                result = await apply_forget_by_topic(
                     user_id=user_id,
-                    similarity_threshold=0.70  # Slightly lower threshold for forget commands
+                    topic=forget_topic,
+                    is_german=is_german,
+                    similarity_threshold=0.70,
+                    profile_keys=profile_keys or None
                 )
-
-                if deleted_ids:
-                    if is_german:
-                        response_content = f"Ich habe {len(deleted_ids)} Erinnerung{'en' if len(deleted_ids) > 1 else ''} über '{forget_topic}' gelöscht."
-                    else:
-                        response_content = f"I deleted {len(deleted_ids)} memor{'ies' if len(deleted_ids) > 1 else 'y'} about '{forget_topic}'."
-
-                    logger.info(f"Successfully deleted {len(deleted_ids)} memories: {deleted_ids}")
-                else:
-                    if is_german:
-                        response_content = f"Ich habe keine Erinnerungen über '{forget_topic}' gefunden."
-                    else:
-                        response_content = f"I found no memories about '{forget_topic}'."
+                response_content = result.response
+                deleted_ids = result.deleted_ids
 
                 session_manager = get_session_manager()
                 try:
@@ -531,11 +510,14 @@ async def _run_chat_logic(
 
     # Phase 1.3: Self-Reflection - Check for hallucinations
     step_start = time.time()
-    # OPTIMIZATION: Only run self-reflection if answer is uncertain or very short
-    should_reflect = (
-        len(response_content) < 100 or  # Very short answers
-        any(marker in response_content.lower() for marker in ["ich bin mir nicht sicher", "vielleicht", "möglicherweise", "I'm not sure", "maybe"]) or
-        (not relevant_docs and not web_search_result)  # No sources available
+    query_type = classify_query(clean_message)
+    tools_used = bool(web_search_result and web_search_result.get("results"))
+    has_sources = bool(relevant_docs) or tools_used
+    should_reflect, reflection_reason = needs_self_reflection(
+        query_type=query_type,
+        tools_used=tools_used,
+        response_content=response_content,
+        has_sources=has_sources
     )
 
     if should_reflect:
@@ -570,7 +552,7 @@ async def _run_chat_logic(
             logger.error(f"Error in self-reflection: {e}")
             # Continue with original answer if reflection fails
     else:
-        logger.info("✓ Skipping self-reflection (answer appears confident and has sources)")
+        logger.info(f"✓ Skipping self-reflection ({reflection_reason})")
     perf.record("Self-reflection", (time.time() - step_start) * 1000)
 
     # Add web search feedback to response if available
@@ -741,6 +723,11 @@ Sources:
                         from backend.services.user_store import get_user_store
                         get_user_store().update_user(user_id, {"profile": updated_profile})
                         logger.info(f"💾 Profile persisted for user {user_id}")
+                        try:
+                            from backend.services.user_profile_qdrant import upsert_user_profile_in_qdrant
+                            await asyncio.to_thread(upsert_user_profile_in_qdrant, user_id, updated_profile)
+                        except Exception as e:
+                            logger.warning(f"Failed to upsert profile in Qdrant for {user_id}: {e}")
                     except Exception as e:
                         logger.warning(f"Failed to persist profile for {user_id}: {e}")
 

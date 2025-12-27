@@ -205,15 +205,39 @@ def _extract_user_facts(message: str, language: str = "de") -> List[dict]:
     if not text:
         return []
 
+    stopwords = set()
+    stop_starts = ()
     patterns = []
     if language == "de":
+        stopwords = {
+            "der", "die", "das", "ein", "eine", "einer", "eines", "einem",
+            "mein", "meine", "meiner", "meines", "mir", "mich",
+            "du", "dir", "dich", "ihr", "wir", "uns", "euch", "sie", "er", "es",
+            "ihm", "ihnen",
+        }
+        stop_starts = ("dir ", "dich ", "euch ", "ihnen ", "ihm ")
         patterns = [
             (r"\bich hei[ßs]e\s+([^.,;!?]+)", "name"),
             (r"\bmein name ist\s+([^.,;!?]+)", "name"),
+            (r"\bich\s+([a-zäöüß-]+)\s+hei[ßs]e\b", "name"),
             (r"\bich wohne in\s+([^.,;!?]+)", "location"),
             (r"\bich lebe in\s+([^.,;!?]+)", "location"),
             (r"\bich arbeite (?:bei|in)\s+([^.,;!?]+)", "workplace"),
+            (r"\bich arbeite als\s+([^.,;!?]+)", "occupation"),
+            (r"\bmein beruf ist\s+([^.,;!?]+)", "occupation"),
+            (r"\bich bin\s+([^.,;!?]+)\s+von beruf\b", "occupation"),
             (r"\bmein geburtstag ist\s+([^.,;!?]+)", "birthday"),
+            (r"\bmein hobby ist\s+([^.,;!?]+)", "interest"),
+            (r"\bmeine hobbys sind\s+([^.,;!?]+)", "interest"),
+            (r"\bich interessiere mich für\s+([^.,;!?]+)", "interest"),
+            (r"\bich begeistere mich für\s+([^.,;!?]+)", "interest"),
+            (r"\bich kann\s+([^.,;!?]+)", "skill"),
+            (r"\bich beherrsche\s+([^.,;!?]+)", "skill"),
+            (r"\bich kenne mich mit\s+([^.,;!?]+)\s+aus\b", "skill"),
+            (r"\bich spreche\s+([^.,;!?]+)", "language"),
+            (r"\bmeine sprachen sind\s+([^.,;!?]+)", "language"),
+            (r"\bich bevorzuge\s+([^.,;!?]+)", "preference"),
+            (r"\bich mag es\s+([^.,;!?]+)", "preference"),
             (r"\bmeine lieblings([a-zäöüß]+)\s+ist\s+([^.,;!?]+)", "favorite"),
         ]
     else:
@@ -221,12 +245,34 @@ def _extract_user_facts(message: str, language: str = "de") -> List[dict]:
             (r"\bmy name is\s+([^.,;!?]+)", "name"),
             (r"\bi live in\s+([^.,;!?]+)", "location"),
             (r"\bi work at\s+([^.,;!?]+)", "workplace"),
+            (r"\bi work as\s+([^.,;!?]+)", "occupation"),
+            (r"\bmy job is\s+([^.,;!?]+)", "occupation"),
             (r"\bmy birthday is\s+([^.,;!?]+)", "birthday"),
+            (r"\bmy hobby is\s+([^.,;!?]+)", "interest"),
+            (r"\bmy hobbies are\s+([^.,;!?]+)", "interest"),
+            (r"\bi am interested in\s+([^.,;!?]+)", "interest"),
+            (r"\bi like\s+([^.,;!?]+)", "interest"),
+            (r"\bi can\s+([^.,;!?]+)", "skill"),
+            (r"\bi am good at\s+([^.,;!?]+)", "skill"),
+            (r"\bi speak\s+([^.,;!?]+)", "language"),
+            (r"\bmy languages are\s+([^.,;!?]+)", "language"),
+            (r"\bi prefer\s+([^.,;!?]+)", "preference"),
             (r"\bmy favorite ([a-z]+)\s+is\s+([^.,;!?]+)", "favorite"),
         ]
 
     facts = []
     lowered = text.lower()
+    list_kinds = {"interest", "skill", "language", "preference"}
+
+    def split_values(raw_value: str) -> List[str]:
+        parts = re.split(r",|\bund\b|\band\b|&|\bsowie\b", raw_value)
+        cleaned = []
+        for part in parts:
+            value = part.strip()
+            if value:
+                cleaned.append(value)
+        return cleaned
+
     for pattern, kind in patterns:
         match = re.search(pattern, lowered)
         if not match:
@@ -235,8 +281,21 @@ def _extract_user_facts(message: str, language: str = "de") -> List[dict]:
             category = match.group(1)
             value = match.group(2)
             facts.append({"kind": "favorite", "category": category.strip(), "value": value.strip()})
+        elif kind in list_kinds:
+            values = split_values(match.group(1))
+            for value in values:
+                if stopwords and value.strip() in stopwords:
+                    continue
+                if stop_starts and value.strip().startswith(stop_starts):
+                    continue
+                normalized = value.strip()
+                facts.append({"kind": kind, "category": normalized, "value": normalized})
         else:
             value = match.group(1)
+            if stopwords and value.strip() in stopwords:
+                continue
+            if stop_starts and value.strip().startswith(stop_starts):
+                continue
             facts.append({"kind": kind, "value": value.strip()})
 
     return facts
@@ -314,7 +373,9 @@ async def retrieve_and_filter_memories(
             "heißt", "heiße", "name ist", "my name", "I am", "I'm",
             "Besitzer", "owner", "genannt",
             "Geburtstag", "birthday", "wohne in", "live in", "arbeite bei", "work at",
-            "ich bin der", "ich bin ein", "das ist mein"
+            "ich bin der", "ich bin ein", "das ist mein",
+            "hobby", "hobbys", "hobbies", "interess", "begeistere", "spreche",
+            "skills", "fähigkeit", "fähigkeiten", "präferenz", "bevorzug", "mag es"
         ]
 
         # Questions that are typically circular when asking about memory
@@ -416,10 +477,18 @@ async def retrieve_and_filter_memories(
         # Rerank before prioritization (semantic + lexical overlap)
         non_circular_docs = _rerank_memories(clean_message, non_circular_docs)
 
+        identity_query = any(token in clean_message.lower() for token in [
+            "wie ich heiße", "mein name", "wer bin ich", "beruf", "arbeite", "job", "profession",
+            "hobby", "hobbys", "hobbies", "interesse", "interessen", "skills", "fähigkeit",
+            "fähigkeiten", "sprache", "sprachen", "präferenz", "praeferenz", "bevorzug",
+            "über mich", "ueber mich", "information", "informationen", "profil"
+        ])
+
         # Now prioritize from the non-circular memories
         correction_docs = []
         factual_docs = []
         other_docs = []
+        profile_docs = []
 
         for doc in non_circular_docs:
             content = getattr(doc, 'page_content', str(doc))
@@ -429,6 +498,10 @@ async def retrieve_and_filter_memories(
             category = doc.metadata.get("category")
             if category == "self_correction":
                 correction_docs.append(doc)
+            elif category == "user_profile":
+                if identity_query:
+                    profile_docs.append(doc)
+                continue
             elif category == "user_fact":
                 confidence = doc.metadata.get("confidence", 0.0)
                 try:
@@ -445,14 +518,11 @@ async def retrieve_and_filter_memories(
                 other_docs.append(doc)
 
         # Priority: corrections > factual > other
-        identity_query = any(token in clean_message.lower() for token in [
-            "wie ich heiße", "mein name", "wer bin ich", "beruf", "arbeite", "job", "profession",
-            "über mich", "ueber mich", "information", "informationen"
-        ])
-
         if identity_query:
             personal_indicators = [
-                "ich heiße", "mein name", "ich bin", "arbeite", "beruf", "job", "profession"
+                "ich heiße", "mein name", "arbeite", "beruf", "job", "profession",
+                "hobby", "hobbys", "hobbies", "interesse", "interessen", "skills", "fähigkeit",
+                "fähigkeiten", "sprache", "sprachen", "präferenz", "praeferenz", "bevorzug"
             ]
             smart_home_indicators = [
                 "licht", "lampe", "heizung", "thermostat", "schalte", "wohnzimmer", "badezimmer",
@@ -469,6 +539,7 @@ async def retrieve_and_filter_memories(
 
             # Strongly prefer personal-only memories for identity queries
             relevant_docs = (correction_docs[:3] +
+                            (profile_docs[:3] if profile_docs else []) +
                             (personal_docs[:5] if personal_docs else []))
             if not relevant_docs:
                 relevant_docs = (correction_docs[:3] + factual_docs[:5])
@@ -542,6 +613,53 @@ async def store_conversation_memory(
         clean_message, tool_results
     )
 
+    async def store_user_facts_task():
+        try:
+            if not user_facts:
+                return
+            for fact in user_facts[:5]:
+                kind = fact.get("kind", "fact")
+                value = fact.get("value", "")
+                category = fact.get("category")
+                if not value:
+                    continue
+                if kind == "favorite" and category:
+                    fact_content = f"User fact: favorite_{category} = {value}"
+                else:
+                    fact_content = f"User fact: {kind} = {value}"
+
+                fact_metadata = {
+                    "category": "user_fact",
+                    "source": "user_fact",
+                    "language": language,
+                    "fact_kind": kind,
+                    "confidence": fact_confidence,
+                    "superseded": False,
+                    "fact_active": True,
+                }
+                if category:
+                    fact_metadata["fact_category"] = category
+                if fact_ttl_days > 0:
+                    expires_at = datetime.now(timezone.utc) + timedelta(days=fact_ttl_days)
+                    fact_metadata["expires_at"] = expires_at.isoformat()
+
+                fact_doc_id, _fact_ts = await asyncio.to_thread(
+                    store_memory,
+                    content=fact_content,
+                    user_id=user_id,
+                    tags=["user_fact", "profile", "fact"],
+                    metadata=fact_metadata
+                )
+
+                await _supersede_existing_facts(
+                    user_id=user_id,
+                    fact_kind=kind,
+                    fact_category=category,
+                    new_fact_id=fact_doc_id
+                )
+        except Exception as e:
+            logger.error(f"Error storing user facts: {e}")
+
     if not should_store:
         # Only pattern tracking, no full text storage
         from backend.services.smart_home_pattern_aggregator import get_pattern_aggregator
@@ -566,6 +684,8 @@ async def store_conversation_memory(
 
         logger.info(f"📊 Smart Home Pattern tracked (reason: {reason}), "
                    "nicht in Qdrant gespeichert")
+        if user_facts:
+            asyncio.create_task(store_user_facts_task())
         return None
     else:
         # Full text storage
@@ -597,48 +717,6 @@ async def store_conversation_memory(
                 )
                 logger.info(f"💾 Memory stored (reason: {reason}): {doc_id}")
 
-                if user_facts:
-                    for fact in user_facts[:5]:
-                        kind = fact.get("kind", "fact")
-                        value = fact.get("value", "")
-                        category = fact.get("category")
-                        if not value:
-                            continue
-                        if kind == "favorite" and category:
-                            fact_content = f"User fact: favorite_{category} = {value}"
-                        else:
-                            fact_content = f"User fact: {kind} = {value}"
-
-                        fact_metadata = {
-                            "category": "user_fact",
-                            "source": "user_fact",
-                            "language": language,
-                            "fact_kind": kind,
-                            "confidence": fact_confidence,
-                            "superseded": False,
-                            "fact_active": True,
-                        }
-                        if category:
-                            fact_metadata["fact_category"] = category
-                        if fact_ttl_days > 0:
-                            expires_at = datetime.now(timezone.utc) + timedelta(days=fact_ttl_days)
-                            fact_metadata["expires_at"] = expires_at.isoformat()
-
-                        fact_doc_id, _fact_ts = await asyncio.to_thread(
-                            store_memory,
-                            content=fact_content,
-                            user_id=user_id,
-                            tags=["user_fact", "profile", "fact"],
-                            metadata=fact_metadata
-                        )
-
-                        await _supersede_existing_facts(
-                            user_id=user_id,
-                            fact_kind=kind,
-                            fact_category=category,
-                            new_fact_id=fact_doc_id
-                        )
-
                 return doc_id, ts
             except Exception as e:
                 logger.error(f"Error storing memory: {e}")
@@ -646,6 +724,8 @@ async def store_conversation_memory(
 
         # Create task and return immediately (async storage)
         asyncio.create_task(memory_store_task())
+        if user_facts:
+            asyncio.create_task(store_user_facts_task())
         return None  # Don't wait for storage to complete
 
 
