@@ -12,7 +12,6 @@
     const ROUTE_MAP = {
         '/': '/frontend/index.html',
         '/chat': '/frontend/chat_ui.html',
-        '/voice': '/frontend/chat_ui.html#voice-controls',
         '/memory': '/frontend/pages/memory_management_ui.html',
         '/patterns': '/frontend/pages/patterns_ui.html',
         '/gaps': '/frontend/pages/knowledge_gaps_ui.html',
@@ -148,10 +147,6 @@
                         e.preventDefault();
                         window.location.href = ROUTE_MAP['/chat'];
                         break;
-                    case 'v':
-                        e.preventDefault();
-                        window.location.href = ROUTE_MAP['/voice'];
-                        break;
                     case 'm':
                         e.preventDefault();
                         window.location.href = ROUTE_MAP['/memory'];
@@ -213,7 +208,6 @@
         if (window.location.hostname === 'localhost') {
             console.log('🎹 Keyboard Shortcuts:');
             console.log('  Alt+C → Chat');
-            console.log('  Alt+V → Voice');
             console.log('  Alt+M → Memory');
             console.log('  Alt+S → Settings');
             console.log('  Alt+D → Dashboard');

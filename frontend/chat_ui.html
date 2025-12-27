@@ -1881,7 +1881,6 @@
             });
 
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                voiceBtn.disabled = true;
                 voiceBtn.title = 'Browser unterstützt keine Audio-Aufnahme';
                 console.warn('❌ Browser unterstützt keine Audio-Aufnahme');
             } else if (typeof window.isSecureContext === 'boolean' && !window.isSecureContext) {

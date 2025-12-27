@@ -25,17 +25,8 @@
             title: 'Chat',
             description: 'Intelligente Konversationen mit semantischem Gedächtnis',
             keywords: ['chat', 'gespräch', 'konversation', 'nachricht', 'talk'],
-            url: '/frontend/chat_ui.html#voice-controls',
-            icon: '💬',
-            category: 'Hauptfunktionen'
-        },
-        {
-            id: 'voice',
-            title: 'Voicechat',
-            description: 'Sprachbasierte Interaktion mit Lexi AI',
-            keywords: ['voice', 'sprache', 'audio', 'sprechen', 'mikrofon'],
             url: '/frontend/chat_ui.html',
-            icon: '🎤',
+            icon: '💬',
             category: 'Hauptfunktionen'
         },
 
