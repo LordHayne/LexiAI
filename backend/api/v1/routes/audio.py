@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Response, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, UploadFile, File, Response, HTTPException, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import StreamingResponse
 import logging
 import json
@@ -91,12 +91,28 @@ def _ensure_ws_user_id(websocket: WebSocket) -> str:
 
 # ---------------------------------------------------
 # 1️⃣ Konfigurationswert aus persistent_config.json laden
-def get_persistent_config_value(key: str, default: Any = None) -> Any:
-    # Use relative path from this file to config directory
-    config_path = Path(__file__).parent.parent.parent.parent / "backend" / "config" / "persistent_config.json"
+def _resolve_config_path() -> Optional[Path]:
+    candidates = []
+    env_path = os.environ.get("LEXI_CONFIG_PATH")
+    if env_path:
+        candidates.append(Path(env_path))
+    candidates.append(Path(__file__).resolve().parents[3] / "config" / "persistent_config.json")
+    candidates.append(Path("backend/config/persistent_config.json"))
 
-    if not config_path.exists():
-        logger.warning(f"Config-Datei {config_path} nicht gefunden!")
+    for path in candidates:
+        if path.exists():
+            return path
+
+    logger.warning(
+        "Config-Datei nicht gefunden. Geprueft: %s",
+        ", ".join(str(path) for path in candidates)
+    )
+    return None
+
+
+def get_persistent_config_value(key: str, default: Any = None) -> Any:
+    config_path = _resolve_config_path()
+    if not config_path:
         return default
 
     try:
@@ -132,6 +148,8 @@ async def transcribe_audio(file_bytes: bytes, filename: str = "audio.wav") -> st
     estimated_duration = len(file_bytes) / 16000  # Grobe Schätzung für 16kHz Audio
     logger.debug(f"Geschätzte Audio-Dauer: {estimated_duration:.2f}s")
     
+    suffix = Path(filename).suffix or ".wav"
+
     # Whisper API Integration (OpenAI)
     use_whisper_api = get_persistent_config_value("use_whisper_api", False)
     
@@ -147,7 +165,7 @@ async def transcribe_audio(file_bytes: bytes, filename: str = "audio.wav") -> st
                 logger.debug("🌐 Nutze OpenAI Whisper API")
                 
                 # Temporäre Datei erstellen
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp_file:
                     tmp_file.write(file_bytes)
                     tmp_file_path = tmp_file.name
                 
@@ -189,7 +207,7 @@ async def transcribe_audio(file_bytes: bytes, filename: str = "audio.wav") -> st
             model = whisper.load_model(model_name)
             
             # Temporäre Datei für Whisper
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp_file:
                 tmp_file.write(file_bytes)
                 tmp_file_path = tmp_file.name
             
@@ -209,48 +227,49 @@ async def transcribe_audio(file_bytes: bytes, filename: str = "audio.wav") -> st
         except Exception as e:
             logger.error(f"Fehler bei lokalem Whisper: {e}")
     
-    # Fallback: Dummy-Transkription
+    allow_dummy = get_persistent_config_value("allow_dummy_transcription", False)
     processing_time = time.time() - start_time
-    dummy_text = "Hallo, ich bin Lexi – das ist dein Text 😊"
-    logger.info(f"🤖 Dummy-Transkription verwendet: {processing_time:.2f}s")
-    return dummy_text
+    if allow_dummy:
+        dummy_text = "Hallo, ich bin Lexi – das ist dein Text 😊"
+        logger.info(f"🤖 Dummy-Transkription verwendet: {processing_time:.2f}s")
+        return dummy_text
+
+    logger.error(f"❌ Transkription nicht verfügbar: {processing_time:.2f}s")
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "Keine Transkription möglich. Installiere lokales Whisper "
+            "oder aktiviere use_whisper_api + OPENAI_API_KEY."
+        )
+    )
 
 # ---------------------------------------------------
 # 3️⃣ Improved Chat API Call with Direct LLM Integration
-async def ask_lexi_chat_api(message: str) -> str:
+async def ask_lexi_chat_api(message: str, user_id: Optional[str] = None, base_url: Optional[str] = None) -> str:
     """
     Improved chat function that can work with direct LLM or through API.
     """
     start_time = time.time()
     
-    # Try direct LLM call first (bypass authentication issues)
+    # Try internal chat processing first (no network dependency)
     try:
-        from backend.core.lexi_adapter import LexiAdapter
-        
-        logger.info(f"💬 Direkte LLM-Anfrage: {len(message)} Zeichen")
-        
-        # Create LexiAdapter instance
-        adapter = LexiAdapter()
-        
-        # Get system prompt from config
-        system_prompt = get_persistent_config_value("system_prompt", "Du bist Lexi, eine charmante KI-Assistentin.")
-        
-        # Call LLM directly
-        response = await adapter.generate_response(
-            message=message,
-            system_prompt=system_prompt,
-            stream=False
-        )
-        
-        processing_time = time.time() - start_time
-        logger.info(f"✅ Direkte LLM-Antwort erhalten: {processing_time:.2f}s, {len(response)} Zeichen")
-        return response
+        from backend.core.chat_processing import process_chat_message_async
+
+        logger.info(f"💬 Interne Chat-Verarbeitung: {len(message)} Zeichen")
+
+        result = await process_chat_message_async(message, user_id=user_id or "default")
+        response = result.get("response") if isinstance(result, dict) else None
+        if response:
+            processing_time = time.time() - start_time
+            logger.info(f"✅ Interne Antwort erhalten: {processing_time:.2f}s, {len(response)} Zeichen")
+            return response
         
     except Exception as e:
-        logger.warning(f"Direkte LLM-Anfrage fehlgeschlagen: {e}, versuche API...")
+        logger.warning(f"Interne Chat-Verarbeitung fehlgeschlagen: {e}, versuche API...")
     
     # Fallback to API call (use /ui/chat endpoint - no auth required)
-    url = "http://localhost:8000/ui/chat"
+    ui_base_url = base_url or os.environ.get("LEXI_BASE_URL") or get_persistent_config_value("ui_base_url")
+    url = f"{ui_base_url.rstrip('/')}/ui/chat" if ui_base_url else "http://localhost:8000/ui/chat"
     
     # Try different authentication approaches
     auth_attempts = [
@@ -267,8 +286,12 @@ async def ask_lexi_chat_api(message: str) -> str:
         "message": message,
         "stream": False
     }
+    if user_id:
+        payload["user_id"] = user_id
     
     base_headers = {"Content-Type": "application/json"}
+    if user_id:
+        base_headers["X-User-ID"] = user_id
     timeout = aiohttp.ClientTimeout(total=30)
     
     for i, auth_headers in enumerate(auth_attempts):
@@ -395,7 +418,7 @@ def validate_audio_file(file: UploadFile) -> None:
 # ---------------------------------------------------
 # 6️⃣ Hauptendpoint mit verbesserter Fehlerbehandlung
 @router.post("/api/audio")
-async def process_audio(file: UploadFile = File(...)):
+async def process_audio(request: Request, file: UploadFile = File(...)):
     """
     Verarbeitet eine Audiodatei: Audio → Transkription → Chat → TTS → Audio
     """
@@ -422,7 +445,9 @@ async def process_audio(file: UploadFile = File(...)):
 
         # 2️⃣ Transkription → Lexi-API → Antwort-Text
         step_start = time.time()
-        response_text = await ask_lexi_chat_api(transcription)
+        user_id = getattr(request.state, "user_id", None)
+        base_url = str(request.base_url).rstrip("/")
+        response_text = await ask_lexi_chat_api(transcription, user_id=user_id, base_url=base_url)
         chat_time = time.time() - step_start
         logger.info(f"🤖 Chat-Verarbeitung: {chat_time:.2f}s")
 
@@ -466,7 +491,7 @@ async def process_audio(file: UploadFile = File(...)):
 # ---------------------------------------------------
 # 7️⃣ Zusätzliche Utility-Endpoints (unchanged)
 @router.get("/api/audio/health")
-async def health_check():
+async def health_check(request: Request):
     """
     Erweiterte Gesundheitsprüfung mit Performance-Metriken und Testdaten.
     """
@@ -493,7 +518,8 @@ async def health_check():
     
     # Chat API testen (with improved fallback)
     try:
-        test_response = await ask_lexi_chat_api("Health check test")
+        base_url = str(request.base_url).rstrip("/")
+        test_response = await ask_lexi_chat_api("Health check test", base_url=base_url)
         status["chat_api"] = "ok"
         status["chat_test_response_length"] = len(test_response)
         logger.debug(f"Chat API Health Check: OK ({len(test_response)} Zeichen)")
@@ -727,6 +753,9 @@ async def voice_ws(websocket: WebSocket):
                 "provider": tts_result["provider"],
                 "data": audio_b64
             })
+        except HTTPException as e:
+            logger.error(f"Voice WS processing failed: {e.detail}", exc_info=True)
+            await websocket.send_json({"type": "error", "message": e.detail})
         except Exception as e:
             logger.error(f"Voice WS processing failed: {e}", exc_info=True)
             await websocket.send_json({"type": "error", "message": "Voice Verarbeitung fehlgeschlagen."})

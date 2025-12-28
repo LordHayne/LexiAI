@@ -1768,6 +1768,18 @@
             });
         }
 
+        async function getAudioStream(constraintsList) {
+            let lastError;
+            for (const constraints of constraintsList) {
+                try {
+                    return await navigator.mediaDevices.getUserMedia(constraints);
+                } catch (error) {
+                    lastError = error;
+                }
+            }
+            throw lastError || new Error('Audio capture failed');
+        }
+
         async function startRealtimeVoice() {
             const wsReady = await connectVoiceWs();
             if (!wsReady) {
@@ -1777,13 +1789,16 @@
             stopAllAudioPlayback();
             resetVoiceStreamMessages();
 
-            const stream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    channelCount: 1,
-                    echoCancellation: true,
-                    noiseSuppression: true
-                }
-            });
+            const stream = await getAudioStream([
+                {
+                    audio: {
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                },
+                { audio: true }
+            ]);
 
             voiceStream.stream = stream;
             try {
@@ -1952,14 +1967,16 @@
                     resetVoiceUI();
                     return;
                 }
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        channelCount: 1,
-                        sampleRate: 16000,
-                        echoCancellation: true,
-                        noiseSuppression: true
-                    }
-                });
+                const stream = await getAudioStream([
+                    {
+                        audio: {
+                            channelCount: 1,
+                            echoCancellation: true,
+                            noiseSuppression: true
+                        }
+                    },
+                    { audio: true }
+                ]);
 
                 voiceRecording.audioChunks = [];
                 const mimeType = getSupportedRecorderMimeType();
