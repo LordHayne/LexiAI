@@ -137,9 +137,9 @@ def safe_search(*args, **kwargs):
     if "query_vector" in kwargs and "query" not in kwargs:
         kwargs = dict(kwargs)
         kwargs["query"] = kwargs.pop("query_vector")
-    if "query_filter" in kwargs and "filter" not in kwargs:
+    if "filter" in kwargs and "query_filter" not in kwargs:
         kwargs = dict(kwargs)
-        kwargs["filter"] = kwargs.pop("query_filter")
+        kwargs["query_filter"] = kwargs.pop("filter")
 
     response = client.query_points(*args, **kwargs)
     return response.points

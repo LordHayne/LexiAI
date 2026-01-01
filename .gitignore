@@ -104,3 +104,6 @@ docs/integration_test_report_*.json
 docs/qdrant_diagnostics_*.json
 frontend/.claude-flow/
 frontend/pages/.claude-flow/
+
+# Auto Claude data directory
+.auto-claude/

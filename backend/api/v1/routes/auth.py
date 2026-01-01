@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 # Router
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 def _sync_user_store(user_id: str, display_name: str, email: Optional[str]) -> None:
@@ -133,12 +133,16 @@ REFRESH_TOKENS: Dict[str, dict] = UserPersistence.load_refresh_tokens()
 logger.info(f"🔐 User-Datenbank initialisiert: {len(USERS_DB)} User, {len(REFRESH_TOKENS)} Refresh Tokens")
 
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+def get_current_user(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+) -> dict:
     """
     Dependency: Validiert JWT Token und gibt User zurück
 
     Args:
-        credentials: Bearer Token aus Authorization Header
+        request: FastAPI Request (für Cookie-Zugriff)
+        credentials: Bearer Token aus Authorization Header (optional)
 
     Returns:
         User Dictionary
@@ -147,7 +151,16 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         HTTPException: Bei ungültigem/abgelaufenem Token
     """
     try:
-        token = credentials.credentials
+        token = credentials.credentials if credentials else None
+        if not token:
+            token = request.cookies.get("access_token")
+
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Access Token fehlt"
+            )
+
         payload = verify_token(token, token_type="access")
 
         user_id = payload.get("sub")
@@ -159,6 +172,8 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 
         return USERS_DB[user_id]
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Token-Validierung fehlgeschlagen: {e}")
         raise HTTPException(
