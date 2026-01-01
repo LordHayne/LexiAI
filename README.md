@@ -31,6 +31,11 @@ cd in your folder and:
 sh setup.sh
 ```
 
+## Lokale Spracherkennung (Whisper)
+Fuer lokale Transkription wird `openai-whisper` genutzt und `ffmpeg` benoetigt.
+- `setup.sh` installiert `ffmpeg` automatisch (Homebrew) und zieht Python-Dependencies.
+- Bei bestehender Installation: `brew install ffmpeg` und `pip install -r requirements.txt`.
+
 
 
 ## Weitere Infos
