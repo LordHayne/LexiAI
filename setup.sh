@@ -35,6 +35,20 @@ fi
 PYTHON_VERSION=$("${PYTHON_BIN}" --version | cut -d' ' -f2)
 echo -e "${GREEN}✅ Python ${PYTHON_VERSION} found${NC}"
 
+# Check ffmpeg (required for local Whisper)
+echo ""
+echo "1️⃣➕ Checking ffmpeg..."
+if ! command -v ffmpeg &> /dev/null; then
+    if command -v brew &> /dev/null; then
+        echo -e "${YELLOW}⚠️  ffmpeg not found. Installing via Homebrew...${NC}"
+        brew install ffmpeg
+    else
+        echo -e "${RED}❌ Homebrew not found. Install ffmpeg manually.${NC}"
+        exit 1
+    fi
+fi
+echo -e "${GREEN}✅ ffmpeg found${NC}"
+
 # Create virtual environment if it doesn't exist
 if [ ! -d ".venv" ]; then
     echo ""
